@@ -94,7 +94,12 @@ fn build_main_window(
     ui.window.present();
 
     if warned_multi {
-        ui.toast("Multiple files were provided; showing the first one.");
+        ui.show_status(
+            "dialog-information-symbolic",
+            "Multiple files detected",
+            "Showing the first selected file.",
+            None,
+        );
     }
 
     wire_install_action(
@@ -197,7 +202,6 @@ fn wire_install_action(
                                 &msg,
                                 Some("success"),
                             );
-                            ui_for_async.toast(&msg);
                             info!("{}: {}", msg, path);
 
                             let win = ui_for_async.window.clone();
