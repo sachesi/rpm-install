@@ -5,7 +5,7 @@ use adw::prelude::*;
 use gtk::pango;
 use gtk::{Align, Orientation};
 
-use crate::installed_state::InstalledState;
+use crate::installed_state::{InstallRelation, InstalledState};
 use crate::rpm_info::{RpmInfo, format_size};
 
 #[derive(Clone)]
@@ -14,6 +14,7 @@ pub struct Ui {
     pub title_label: gtk::Label,
     pub subtitle_label: gtk::Label,
     pub status_label: gtk::Label,
+    pub installed_context_label: gtk::Label,
     pub install_button: gtk::Button,
     pub spinner: gtk::Spinner,
     pub progress: gtk::ProgressBar,
@@ -52,6 +53,12 @@ impl Ui {
         let status_label = gtk::Label::builder()
             .halign(Align::Start)
             .wrap(true)
+            .build();
+
+        let installed_context_label = gtk::Label::builder()
+            .halign(Align::Start)
+            .wrap(true)
+            .css_classes(["caption", "dim-label"])
             .build();
 
         let spinner = gtk::Spinner::builder()
@@ -161,6 +168,7 @@ impl Ui {
         content.append(&title_label);
         content.append(&subtitle_label);
         content.append(&status_label);
+        content.append(&installed_context_label);
         content.append(&error_revealer);
         content.append(&expander_group);
         content.append(&actions_box);
@@ -189,6 +197,7 @@ impl Ui {
             title_label,
             subtitle_label,
             status_label,
+            installed_context_label,
             install_button,
             spinner,
             progress,
@@ -204,22 +213,43 @@ impl Ui {
         self.subtitle_label
             .set_label(&format!("{} • {}", info.path.display(), info.arch));
 
-        if installed.installed {
-            self.install_button.set_label("Reinstall");
-            self.status_label
-                .set_label("This exact package build is already installed.");
-        } else {
-            self.install_button.set_label("Install");
-            self.status_label
-                .set_label("This package is not currently installed.");
+        match installed.relation {
+            InstallRelation::NotInstalled => {
+                self.install_button.set_label("Install");
+                self.status_label
+                    .set_label("This package is not currently installed.");
+            }
+            InstallRelation::SameVersion => {
+                self.install_button.set_label("Reinstall");
+                self.status_label
+                    .set_label("This exact package build is already installed.");
+            }
+            InstallRelation::Upgrade => {
+                self.install_button.set_label("Install");
+                self.status_label
+                    .set_label("An older installed version was detected; this will update it.");
+            }
+            InstallRelation::Downgrade => {
+                self.install_button.set_label("Install");
+                self.status_label
+                    .set_label("A newer installed version exists; this install may downgrade it.");
+            }
         }
+
+        self.installed_context_label.set_label(
+            &installed
+                .installed_evr_arch
+                .as_ref()
+                .map(|v| format!("Installed: {v}"))
+                .unwrap_or_else(|| "Installed: not present".to_string()),
+        );
 
         if let Some(rows_rc) = self
             .window
             .data::<Rc<RefCell<Vec<adw::ActionRow>>>>("detail_rows")
         {
             let rows = rows_rc.borrow();
-            let mut values = vec![
+            let values = vec![
                 info.name.clone(),
                 format!(
                     "{}{}-{}",
@@ -242,10 +272,6 @@ impl Ui {
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string()),
             ];
-
-            if let Some(installed_evr_arch) = &installed.installed_evr_arch {
-                values[2] = format!("{} (installed: {})", info.arch, installed_evr_arch);
-            }
 
             for (idx, row) in rows.iter().enumerate() {
                 if let Some(suffix) = row.last_child().and_downcast::<gtk::Label>() {

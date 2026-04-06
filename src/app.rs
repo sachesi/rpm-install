@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use adw::prelude::*;
 use gio::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
 use crate::error::{AppError, AppResult};
-use crate::installed_state::detect_installed;
+use crate::installed_state::{InstallRelation, detect_installed};
 use crate::packagekit::{InstallMode, install_local_file};
 use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};
 use crate::ui::Ui;
@@ -82,10 +80,10 @@ fn build_main_window(
         ui.toast("Multiple files were provided; showing the first one.");
     }
 
-    let mode = if installed.installed {
-        InstallMode::Reinstall
-    } else {
-        InstallMode::Install
+    let mode = match installed.relation {
+        InstallRelation::SameVersion => InstallMode::Reinstall,
+        InstallRelation::Downgrade => InstallMode::Downgrade,
+        InstallRelation::Upgrade | InstallRelation::NotInstalled => InstallMode::Install,
     };
 
     wire_install_action(&ui, info, mode);
@@ -99,18 +97,32 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
     ui.install_button.connect_clicked(move |_| {
         ui_cloned.hide_error();
 
-        let mode_label = match mode {
-            InstallMode::Install => "install",
-            InstallMode::Reinstall => "reinstall",
+        let (heading, action_label, body) = match mode {
+            InstallMode::Install => (
+                "Confirm install",
+                "Install",
+                "This action will use PackageKit and may require administrator authentication.",
+            ),
+            InstallMode::Reinstall => (
+                "Confirm reinstall",
+                "Reinstall",
+                "This package version is already installed. The transaction will request native reinstall semantics from PackageKit and may require administrator authentication.",
+            ),
+            InstallMode::Downgrade => (
+                "Confirm downgrade",
+                "Install older version",
+                "A newer version is already installed. Continuing may downgrade the package and may require administrator authentication.",
+            ),
         };
+
         let confirm = adw::AlertDialog::builder()
-            .heading(format!("Confirm {mode_label}"))
-            .body("This action will use PackageKit and may require administrator authentication.")
+            .heading(heading)
+            .body(body)
             .build();
 
         confirm.add_response("cancel", "Cancel");
-        confirm.add_response("ok", &mode_label.to_uppercase_first());
-        confirm.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
+        confirm.add_response("ok", action_label);
+        confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
         confirm.set_default_response(Some("ok"));
         confirm.set_close_response("cancel");
 
@@ -132,9 +144,10 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
 
                 let ui_for_async = ui_for_response.clone();
                 let path = info_for_response.path.display().to_string();
+                let package_name = info_for_response.name.clone();
                 glib::MainContext::default().spawn_local(async move {
                     let ui_for_progress = ui_for_async.clone();
-                    let result = install_local_file(&path, mode, move |pct| {
+                    let result = install_local_file(&path, &package_name, mode, move |pct| {
                         ui_for_progress.set_progress(pct);
                     })
                     .await;
@@ -142,10 +155,10 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
                     match result {
                         Ok(done) => {
                             ui_for_async.set_busy(false);
-                            let msg = if done.reinstalled {
-                                "Reinstalled successfully"
-                            } else {
-                                "Installed successfully"
+                            let msg = match done {
+                                InstallMode::Reinstall => "Reinstalled successfully",
+                                InstallMode::Downgrade => "Installed (downgrade) successfully",
+                                InstallMode::Install => "Installed successfully",
                             };
                             ui_for_async.status_label.set_label(msg);
                             ui_for_async.toast(msg);
@@ -184,19 +197,5 @@ fn humanize_error(error: &AppError) -> String {
         AppError::InstallationCanceled => "Installation canceled.".to_string(),
         AppError::PackageKit { details, .. } => format!("Installation failed: {details}"),
         other => other.to_string(),
-    }
-}
-
-trait UppercaseFirst {
-    fn to_uppercase_first(&self) -> String;
-}
-
-impl UppercaseFirst for str {
-    fn to_uppercase_first(&self) -> String {
-        let mut chars = self.chars();
-        match chars.next() {
-            Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
-            None => String::new(),
-        }
     }
 }
