@@ -2,7 +2,7 @@
 Type=Application
 Version=1.0
 Name=RPM Installer GUI
-Comment=Install local RPM packages with PackageKit
+Comment=Install local RPM packages with dnf5daemon
 Exec=rpm-installer-gui %f
 Icon=com.example.RpmInstallerGui
 Terminal=false

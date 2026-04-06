@@ -6,6 +6,7 @@ pub enum BackendOperation {
     Reinstall,
     Upgrade,
     Downgrade,
+    Remove,
 }
 
 impl BackendOperation {
@@ -15,6 +16,7 @@ impl BackendOperation {
                 "Install"
             }
             BackendOperation::Reinstall => "Reinstall",
+            BackendOperation::Remove => "Uninstall",
         }
     }
 
@@ -24,6 +26,7 @@ impl BackendOperation {
             BackendOperation::Reinstall => "Reinstalled",
             BackendOperation::Upgrade => "Upgraded",
             BackendOperation::Downgrade => "Downgraded",
+            BackendOperation::Remove => "Removed",
         }
     }
 }

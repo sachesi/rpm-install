@@ -27,6 +27,14 @@ Benefits:
 - Polkit agent available for authentication prompts.
 - GTK4/libadwaita runtime.
 
+## Release notes
+
+### 0.1.2 (2026-04-06)
+
+- Added relation-colored installed-state heading (install/reinstall/downgrade) for quicker visual status scanning.
+- Added an Uninstall action (bottom-left) when the package is already installed.
+- Continued stabilization hardening for path/metadata validation and cleaner error handling.
+
 ### Service behavior
 
 `dnf5daemon` is treated as D-Bus activation-based. The app does **not** require or instruct `systemctl enable dnf5daemon-server.service`.
@@ -41,6 +49,7 @@ For local RPM input, operation selection is driven by installed-state classifica
 - `SameVersion` → backend operation `reinstall` (button: Reinstall)
 - `Upgrade` → backend operation `upgrade` (button: Install)
 - `Downgrade` → backend operation `downgrade` (button: Install + explicit confirmation)
+- Installed relations (`SameVersion`, `Upgrade`, `Downgrade`) also expose `remove` (button: Uninstall)
 
 No fake reinstall/downgrade labeling is used.
 
@@ -53,7 +62,7 @@ The main window was redesigned to follow libadwaita patterns:
 - Compact `adw::Clamp` layout
 - Structured groups (`adw::PreferencesGroup`, `adw::ActionRow`, `adw::ExpanderRow`)
 - `gtk::Revealer` for transient progress and status
-- `adw::ToastOverlay` for success/toast feedback
+- `gtk::Revealer` + status card feedback for progress and result states
 - `adw::StatusPage` for readable cancellation/error/success presentation
 
 Theme handling uses `AdwStyleManager::set_color_scheme` and does not use `GtkSettings:gtk-application-prefer-dark-theme`.

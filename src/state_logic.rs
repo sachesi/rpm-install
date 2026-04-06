@@ -10,6 +10,18 @@ pub enum InstallRelation {
     Downgrade,
 }
 
+pub struct RelationSummary<'a> {
+    pub state_title: &'a str,
+    pub state_subtitle: &'a str,
+    pub fallback_context: &'a str,
+}
+
+pub struct ConfirmationCopy<'a> {
+    pub heading: &'a str,
+    pub body: &'a str,
+    pub destructive: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionMode {
     Install,
@@ -85,6 +97,58 @@ pub fn action_for_relation(relation: &InstallRelation) -> ActionMode {
         InstallRelation::SameVersion => ActionMode::Reinstall,
         InstallRelation::Downgrade => ActionMode::Downgrade,
         InstallRelation::NotInstalled | InstallRelation::Upgrade => ActionMode::Install,
+    }
+}
+
+impl InstallRelation {
+    pub fn summary(&self) -> RelationSummary<'static> {
+        match self {
+            InstallRelation::NotInstalled => RelationSummary {
+                state_title: "Ready to install",
+                state_subtitle: "This package is not currently installed.",
+                fallback_context: "Not installed",
+            },
+            InstallRelation::SameVersion => RelationSummary {
+                state_title: "Reinstall available",
+                state_subtitle: "The same version is already installed.",
+                fallback_context: "Same version installed",
+            },
+            InstallRelation::Upgrade => RelationSummary {
+                state_title: "Upgrade available",
+                state_subtitle: "A previous version is installed and can be upgraded.",
+                fallback_context: "Older version installed",
+            },
+            InstallRelation::Downgrade => RelationSummary {
+                state_title: "Downgrade warning",
+                state_subtitle: "A newer version is installed; this will downgrade it.",
+                fallback_context: "Newer version installed",
+            },
+        }
+    }
+
+    pub fn confirmation_copy(&self) -> ConfirmationCopy<'static> {
+        match self {
+            InstallRelation::Downgrade => ConfirmationCopy {
+                heading: "Confirm downgrade",
+                body: "A newer version is already installed. Continue and downgrade to this local RPM?",
+                destructive: true,
+            },
+            InstallRelation::SameVersion => ConfirmationCopy {
+                heading: "Confirm reinstall",
+                body: "This exact version is already installed. Continue with a reinstall?",
+                destructive: false,
+            },
+            InstallRelation::Upgrade => ConfirmationCopy {
+                heading: "Confirm install",
+                body: "An older version is installed. Continue to upgrade using this local RPM?",
+                destructive: false,
+            },
+            InstallRelation::NotInstalled => ConfirmationCopy {
+                heading: "Confirm install",
+                body: "Install this local RPM package?",
+                destructive: false,
+            },
+        }
     }
 }
 
