@@ -1,4 +1,4 @@
-# RPM Install (GTK4 + libadwaita + dnf5daemon)
+# RPM Installer (GTK4 + libadwaita + dnf5daemon)
 
 Fedora-specific desktop app in Rust for opening a local `.rpm`, showing clean package metadata, and running install/reinstall/upgrade/downgrade via `dnf5daemon` over D-Bus.
 
@@ -29,7 +29,7 @@ Benefits:
 
 ## Release notes
 
-### 0.3.4 (2026-04-06)
+### 0.1.3 (2026-04-06)
 
 - Added relation-colored installed-state heading (install/reinstall/downgrade) for quicker visual status scanning.
 - Added an Uninstall action (bottom-left) when the package is already installed.
