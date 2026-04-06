@@ -10,7 +10,7 @@ use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};
 use crate::state_logic::{ActionMode, InstallRelation, action_for_relation};
 use crate::ui::Ui;
 
-const APP_ID: &str = "com.example.RpmInstaller";
+const APP_ID: &str = "com.github.sachesi.rpminstall";
 
 pub fn run() {
     let app = adw::Application::builder()
