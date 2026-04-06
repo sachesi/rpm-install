@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=RPM Installer GUI
+Comment=Install local RPM packages with PackageKit
+Exec=rpm-installer-gui %f
+Icon=com.example.RpmInstallerGui
+Terminal=false
+Categories=System;PackageManager;GTK;
+StartupNotify=true
+MimeType=application/x-rpm;application/vnd.rpm;
