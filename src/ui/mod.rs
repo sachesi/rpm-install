@@ -38,7 +38,7 @@ const DETAIL_ORDER: [(DetailKey, &str); 10] = [
 
 #[derive(Clone)]
 struct DetailBinding {
-    row: adw::ActionRow,
+    container: gtk::Box,
     value: gtk::Label,
 }
 
@@ -48,16 +48,18 @@ pub struct Ui {
     pub package_name_label: gtk::Label,
     pub version_label: gtk::Label,
     pub path_label: gtk::Label,
-    pub state_row: adw::ActionRow,
     pub context_label: gtk::Label,
     pub status_revealer: gtk::Revealer,
     pub progress_revealer: gtk::Revealer,
     pub spinner: gtk::Spinner,
     pub progress: gtk::ProgressBar,
     pub action_button: gtk::Button,
+    pub state_title_label: gtk::Label,
+    state_subtitle_label: gtk::Label,
     status_icon: gtk::Image,
     status_title: gtk::Label,
     status_body: gtk::Label,
+    details_title: gtk::Label,
     detail_rows: HashMap<DetailKey, DetailBinding>,
 }
 
@@ -66,6 +68,7 @@ struct PackageViewModel {
     package_name: String,
     version_arch: String,
     path_display: String,
+    installed_state_title: String,
     installed_subtitle: String,
     installed_context: String,
     action_label: &'static str,
@@ -74,22 +77,26 @@ struct PackageViewModel {
 
 impl PackageViewModel {
     fn from_inputs(info: &RpmInfo, installed: &InstalledState, action_mode: ActionMode) -> Self {
-        let (installed_subtitle, fallback_state) = match installed.relation {
+        let (installed_state_title, installed_subtitle, fallback_state) = match installed.relation {
             InstallRelation::NotInstalled => (
-                "Not currently installed on this system.",
+                "Ready to install",
+                "This package is not currently installed.",
                 "Not installed".to_string(),
             ),
             InstallRelation::SameVersion => (
-                "Same version is installed. You can reinstall if needed.",
+                "Reinstall available",
+                "The same version is already installed.",
                 "Same version installed".to_string(),
             ),
             InstallRelation::Upgrade => (
-                "An older version is installed. This will upgrade it.",
-                "Upgrade available".to_string(),
+                "Upgrade available",
+                "A previous version is installed and can be upgraded.",
+                "Older version installed".to_string(),
             ),
             InstallRelation::Downgrade => (
-                "A newer version is installed. Installing this RPM will downgrade it.",
-                "Downgrade".to_string(),
+                "Downgrade warning",
+                "A newer version is installed; this will downgrade it.",
+                "Newer version installed".to_string(),
             ),
         };
 
@@ -133,7 +140,6 @@ impl PackageViewModel {
         );
 
         let epoch_prefix = info.epoch.map(|e| format!("{e}:")).unwrap_or_default();
-        let path_display = shorten_middle(&info.path.display().to_string(), 72);
 
         Self {
             package_name: info.name.clone(),
@@ -141,7 +147,8 @@ impl PackageViewModel {
                 "{epoch_prefix}{}-{} • {}",
                 info.version, info.release, info.arch
             ),
-            path_display,
+            path_display: shorten_middle(&info.path.display().to_string(), 72),
+            installed_state_title: installed_state_title.to_string(),
             installed_subtitle: installed_subtitle.to_string(),
             installed_context: installed
                 .installed_evr_arch
@@ -167,11 +174,15 @@ impl Ui {
         let header = adw::HeaderBar::builder()
             .show_end_title_buttons(true)
             .build();
+        header.add_css_class("flat");
         let header_title = adw::WindowTitle::builder()
             .title("Install Local RPM")
             .subtitle("Fedora")
             .build();
         header.set_title_widget(Some(&header_title));
+
+        let package_icon = gtk::Image::from_icon_name("application-x-rpm-symbolic");
+        package_icon.set_pixel_size(42);
 
         let package_name_label = gtk::Label::builder()
             .halign(Align::Start)
@@ -179,65 +190,158 @@ impl Ui {
             .wrap(true)
             .css_classes(["title-2"])
             .build();
+
         let version_label = secondary_label();
 
-        let path_label = secondary_label();
-        path_label.set_selectable(true);
+        let path_label = gtk::Label::builder()
+            .halign(Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["caption", "dim-label"])
+            .selectable(true)
+            .build();
         path_label.set_ellipsize(pango::EllipsizeMode::Middle);
 
-        let hero_box = gtk::Box::builder()
+        let hero_text = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(8)
+            .spacing(4)
+            .hexpand(true)
+            .build();
+        hero_text.append(&package_name_label);
+        hero_text.append(&version_label);
+        hero_text.append(&path_label);
+
+        let hero_box = gtk::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(14)
             .margin_start(18)
             .margin_end(18)
             .margin_top(16)
             .margin_bottom(14)
             .build();
         hero_box.add_css_class("card");
-        hero_box.append(&package_name_label);
-        hero_box.append(&version_label);
-        hero_box.append(&path_label);
+        hero_box.append(&package_icon);
+        hero_box.append(&hero_text);
 
-        let state_row = adw::ActionRow::builder().title("Installed state").build();
-        state_row.set_activatable(false);
+        let state_title_label = gtk::Label::builder()
+            .halign(Align::Start)
+            .xalign(0.0)
+            .css_classes(["heading"])
+            .build();
+        let state_subtitle_label = secondary_label();
         let context_label = gtk::Label::builder()
-            .halign(Align::End)
-            .xalign(1.0)
+            .halign(Align::Start)
+            .xalign(0.0)
+            .css_classes(["monospace", "dim-label"])
             .wrap(true)
-            .css_classes(["dim-label"])
             .build();
-        state_row.add_suffix(&context_label);
 
-        let state_group = adw::PreferencesGroup::builder().build();
-        state_group.add(&state_row);
-
-        let details_group = adw::PreferencesGroup::builder().title("Details").build();
-        let details_expander = adw::ExpanderRow::builder()
-            .title("Package metadata")
-            .subtitle("Show additional package fields")
+        let state_box = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(4)
+            .margin_start(18)
+            .margin_end(18)
+            .margin_top(12)
+            .margin_bottom(12)
             .build();
-        details_group.add(&details_expander);
+        state_box.add_css_class("card");
+        state_box.append(&state_title_label);
+        state_box.append(&state_subtitle_label);
+        state_box.append(&context_label);
+
+        let details_chevron = gtk::Image::from_icon_name("pan-end-symbolic");
+        let details_title = gtk::Label::builder()
+            .label("Package details")
+            .halign(Align::Start)
+            .xalign(0.0)
+            .hexpand(true)
+            .build();
+        let details_toggle_box = gtk::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(8)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+        details_toggle_box.append(&details_title);
+        details_toggle_box.append(&details_chevron);
+
+        let details_toggle = gtk::ToggleButton::builder().build();
+        details_toggle.set_child(Some(&details_toggle_box));
+        details_toggle.add_css_class("flat");
+
+        let details_list = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(10)
+            .margin_start(14)
+            .margin_end(14)
+            .margin_top(6)
+            .margin_bottom(14)
+            .build();
+
+        let details_revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .reveal_child(false)
+            .build();
+        details_revealer.set_child(Some(&details_list));
+
+        let details_card = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(0)
+            .margin_start(18)
+            .margin_end(18)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+        details_card.add_css_class("card");
+        details_card.append(&details_toggle);
+        details_card.append(&details_revealer);
 
         let mut detail_rows = HashMap::new();
         for (key, title) in DETAIL_ORDER {
-            let row = adw::ActionRow::builder().title(title).build();
-            row.set_activatable(false);
-
-            let value = gtk::Label::builder()
-                .halign(Align::End)
-                .xalign(1.0)
+            let key_label = gtk::Label::builder()
+                .label(title)
+                .halign(Align::Start)
+                .xalign(0.0)
+                .css_classes(["dim-label"])
+                .build();
+            let value_label = gtk::Label::builder()
+                .halign(Align::Start)
+                .xalign(0.0)
                 .wrap(true)
                 .wrap_mode(pango::WrapMode::WordChar)
-                .max_width_chars(48)
                 .selectable(true)
                 .build();
-            value.set_ellipsize(pango::EllipsizeMode::End);
 
-            row.add_suffix(&value);
-            details_expander.add_row(&row);
+            let row = gtk::Box::builder()
+                .orientation(Orientation::Vertical)
+                .spacing(2)
+                .build();
+            row.append(&key_label);
+            row.append(&value_label);
 
-            detail_rows.insert(key, DetailBinding { row, value });
+            details_list.append(&row);
+            detail_rows.insert(
+                key,
+                DetailBinding {
+                    container: row,
+                    value: value_label,
+                },
+            );
         }
+
+        let details_chevron_for_toggle = details_chevron.clone();
+        let details_revealer_for_toggle = details_revealer.clone();
+        details_toggle.connect_toggled(move |toggle| {
+            let expanded = toggle.is_active();
+            details_revealer_for_toggle.set_reveal_child(expanded);
+            details_chevron_for_toggle.set_icon_name(Some(if expanded {
+                "pan-down-symbolic"
+            } else {
+                "pan-end-symbolic"
+            }));
+        });
 
         let status_icon = gtk::Image::new();
         status_icon.set_icon_size(gtk::IconSize::Normal);
@@ -263,8 +367,8 @@ impl Ui {
             .spacing(10)
             .margin_start(12)
             .margin_end(12)
-            .margin_top(10)
-            .margin_bottom(10)
+            .margin_top(8)
+            .margin_bottom(8)
             .build();
         status_box.add_css_class("card");
         status_box.append(&status_icon);
@@ -288,7 +392,7 @@ impl Ui {
             .margin_start(12)
             .margin_end(12)
             .margin_top(10)
-            .margin_bottom(2)
+            .margin_bottom(4)
             .build();
         progress_box.append(&spinner);
         progress_box.append(&progress);
@@ -325,15 +429,15 @@ impl Ui {
 
         let content = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(8)
+            .spacing(6)
             .margin_start(12)
             .margin_end(12)
             .margin_top(8)
             .margin_bottom(8)
             .build();
         content.append(&hero_box);
-        content.append(&state_group);
-        content.append(&details_group);
+        content.append(&state_box);
+        content.append(&details_card);
 
         let clamp = adw::Clamp::builder()
             .maximum_size(520)
@@ -353,16 +457,18 @@ impl Ui {
             package_name_label,
             version_label,
             path_label,
-            state_row,
             context_label,
             status_revealer,
             progress_revealer,
             spinner,
             progress,
             action_button,
+            state_title_label,
+            state_subtitle_label,
             status_icon,
             status_title,
             status_body,
+            details_title,
             detail_rows,
         }
     }
@@ -378,18 +484,26 @@ impl Ui {
         self.package_name_label.set_label(&model.package_name);
         self.version_label.set_label(&model.version_arch);
         self.path_label.set_label(&model.path_display);
-        self.state_row.set_subtitle(&model.installed_subtitle);
+        self.state_title_label
+            .set_label(&model.installed_state_title);
+        self.state_subtitle_label
+            .set_label(&model.installed_subtitle);
         self.context_label.set_label(&model.installed_context);
         self.action_button.set_label(model.action_label);
+        self.details_title.set_label(if model.details.is_empty() {
+            "No package details"
+        } else {
+            "Package details"
+        });
 
         for (key, _) in DETAIL_ORDER {
             if let Some(binding) = self.detail_rows.get(&key) {
                 if let Some(value) = model.details.get(&key) {
                     binding.value.set_label(value);
-                    binding.row.set_visible(true);
+                    binding.container.set_visible(true);
                 } else {
-                    binding.row.set_visible(false);
                     binding.value.set_label("");
+                    binding.container.set_visible(false);
                 }
             }
         }
