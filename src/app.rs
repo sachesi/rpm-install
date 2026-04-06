@@ -227,9 +227,13 @@ fn humanize_error(error: &AppError, operation: BackendOperation) -> String {
     const MAX_ERROR_CHARS: usize = 280;
 
     match error {
+        AppError::NonLocalPath(_) => "Only local files are supported. Please select a local .rpm file.".to_string(),
         AppError::UnsupportedFileType => "Only local .rpm files are supported.".to_string(),
         AppError::DirectoryNotSupported => {
             "Please choose an RPM file, not a directory.".to_string()
+        }
+        AppError::SourceRpmNotInstallable => {
+            "Source RPM files (.src.rpm/.nosrc.rpm) cannot be installed with this GUI.".to_string()
         }
         AppError::DaemonUnavailable(_) => "dnf5daemon is not available on system D-Bus. Install the dnf5daemon packages and try again. The service is D-Bus activated and does not need manual systemctl enable.".to_string(),
         AppError::AuthDenied => "Authentication was denied; no changes were made.".to_string(),
