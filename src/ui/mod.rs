@@ -36,6 +36,11 @@ const DETAIL_ORDER: [(DetailKey, &str); 10] = [
     (DetailKey::Signature, "Signature"),
 ];
 
+const OUTER_MARGIN: i32 = 16;
+const SECTION_SPACING: i32 = 12;
+const CARD_PADDING: i32 = 14;
+const FOOTER_PADDING: i32 = 12;
+
 #[derive(Clone)]
 struct DetailBinding {
     container: gtk::Box,
@@ -181,9 +186,6 @@ impl Ui {
             .build();
         header.set_title_widget(Some(&header_title));
 
-        let package_icon = gtk::Image::from_icon_name("application-x-rpm-symbolic");
-        package_icon.set_pixel_size(42);
-
         let package_name_label = gtk::Label::builder()
             .halign(Align::Start)
             .xalign(0.0)
@@ -202,26 +204,18 @@ impl Ui {
             .build();
         path_label.set_ellipsize(pango::EllipsizeMode::Middle);
 
-        let hero_text = gtk::Box::builder()
-            .orientation(Orientation::Vertical)
-            .spacing(4)
-            .hexpand(true)
-            .build();
-        hero_text.append(&package_name_label);
-        hero_text.append(&version_label);
-        hero_text.append(&path_label);
-
         let hero_box = gtk::Box::builder()
-            .orientation(Orientation::Horizontal)
-            .spacing(14)
-            .margin_start(18)
-            .margin_end(18)
-            .margin_top(16)
-            .margin_bottom(14)
+            .orientation(Orientation::Vertical)
+            .spacing(6)
+            .margin_start(CARD_PADDING)
+            .margin_end(CARD_PADDING)
+            .margin_top(CARD_PADDING)
+            .margin_bottom(CARD_PADDING)
             .build();
         hero_box.add_css_class("card");
-        hero_box.append(&package_icon);
-        hero_box.append(&hero_text);
+        hero_box.append(&package_name_label);
+        hero_box.append(&version_label);
+        hero_box.append(&path_label);
 
         let state_title_label = gtk::Label::builder()
             .halign(Align::Start)
@@ -239,10 +233,10 @@ impl Ui {
         let state_box = gtk::Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
-            .margin_start(18)
-            .margin_end(18)
-            .margin_top(12)
-            .margin_bottom(12)
+            .margin_start(CARD_PADDING)
+            .margin_end(CARD_PADDING)
+            .margin_top(CARD_PADDING)
+            .margin_bottom(CARD_PADDING)
             .build();
         state_box.add_css_class("card");
         state_box.append(&state_title_label);
@@ -259,8 +253,8 @@ impl Ui {
         let details_toggle_box = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(8)
-            .margin_start(12)
-            .margin_end(12)
+            .margin_start(CARD_PADDING)
+            .margin_end(CARD_PADDING)
             .margin_top(8)
             .margin_bottom(8)
             .build();
@@ -274,10 +268,10 @@ impl Ui {
         let details_list = gtk::Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(10)
-            .margin_start(14)
-            .margin_end(14)
-            .margin_top(6)
-            .margin_bottom(14)
+            .margin_start(CARD_PADDING)
+            .margin_end(CARD_PADDING)
+            .margin_top(CARD_PADDING / 2)
+            .margin_bottom(CARD_PADDING)
             .build();
 
         let details_revealer = gtk::Revealer::builder()
@@ -289,10 +283,6 @@ impl Ui {
         let details_card = gtk::Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(0)
-            .margin_start(18)
-            .margin_end(18)
-            .margin_top(6)
-            .margin_bottom(6)
             .build();
         details_card.add_css_class("card");
         details_card.append(&details_toggle);
@@ -365,8 +355,8 @@ impl Ui {
         let status_box = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(10)
-            .margin_start(12)
-            .margin_end(12)
+            .margin_start(FOOTER_PADDING)
+            .margin_end(FOOTER_PADDING)
             .margin_top(8)
             .margin_bottom(8)
             .build();
@@ -389,8 +379,8 @@ impl Ui {
         let progress_box = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(10)
-            .margin_start(12)
-            .margin_end(12)
+            .margin_start(FOOTER_PADDING)
+            .margin_end(FOOTER_PADDING)
             .margin_top(10)
             .margin_bottom(4)
             .build();
@@ -411,11 +401,14 @@ impl Ui {
 
         let footer_actions = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
-            .margin_start(12)
-            .margin_end(12)
+            .spacing(8)
+            .margin_start(FOOTER_PADDING)
+            .margin_end(FOOTER_PADDING)
             .margin_top(8)
-            .margin_bottom(10)
+            .margin_bottom(FOOTER_PADDING)
             .build();
+        let footer_spacer = gtk::Box::builder().hexpand(true).build();
+        footer_actions.append(&footer_spacer);
         footer_actions.append(&action_button);
 
         let footer_box = gtk::Box::builder()
@@ -429,11 +422,11 @@ impl Ui {
 
         let content = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(6)
-            .margin_start(12)
-            .margin_end(12)
-            .margin_top(8)
-            .margin_bottom(8)
+            .spacing(SECTION_SPACING)
+            .margin_start(OUTER_MARGIN)
+            .margin_end(OUTER_MARGIN)
+            .margin_top(OUTER_MARGIN)
+            .margin_bottom(OUTER_MARGIN)
             .build();
         content.append(&hero_box);
         content.append(&state_box);
