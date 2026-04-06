@@ -87,6 +87,9 @@ impl Ui {
             .title("Advanced metadata")
             .subtitle("Expand for package metadata")
             .build();
+        content.append(&hero_block);
+        content.append(&state_group);
+        content.append(&details_group);
 
         let detail_rows = Rc::new(RefCell::new(Vec::<adw::ActionRow>::new()));
         for title in [
@@ -320,6 +323,7 @@ fn shorten_middle(input: &str, max_len: usize) -> String {
     if input.chars().count() <= max_len || max_len <= 5 {
         return input.to_string();
     }
+}
 
     let keep = (max_len - 1) / 2;
     let start = input.chars().take(keep).collect::<String>();
