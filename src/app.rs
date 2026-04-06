@@ -1,5 +1,4 @@
 use adw::prelude::*;
-use gio::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
@@ -187,7 +186,7 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
                             });
                         }
                         Err(AppError::InstallationCanceled) => {
-                            ui_for_async.show_error("Installation canceled.");
+                            ui_for_async.show_canceled("Installation canceled.");
                         }
                         Err(err) => {
                             ui_for_async.show_error(&humanize_error(&err));
@@ -198,11 +197,6 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
             },
         );
     });
-
-    if info.is_source_rpm() {
-        ui.install_button.set_sensitive(false);
-        ui.show_error("Source RPMs are not installable with this GUI.");
-    }
 }
 
 fn humanize_error(error: &AppError) -> String {

@@ -65,8 +65,16 @@ install -Dm644 packaging/%{app_id}.metainfo.xml \
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-appstream-util validate-relax --nonet \
-    %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
+if command -v appstream-util >/dev/null 2>&1; then
+    appstream-util validate-relax --nonet \
+        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
+elif command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli validate --no-net \
+        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
+else
+    echo "Neither appstream-util nor appstreamcli is available" >&2
+    exit 1
+fi
 
 %post
 update-desktop-database %{_datadir}/applications &> /dev/null || :
