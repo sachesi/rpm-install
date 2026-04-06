@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.example.RpmInstallerGui</id>
+  <name>RPM Installer GUI</name>
+  <summary>Install local RPM files through PackageKit</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>A small libadwaita desktop app that installs local RPM files from Nautilus using PackageKit authorization and transaction APIs.</p>
+  </description>
+  <launchable type="desktop-id">com.example.RpmInstallerGui.desktop</launchable>
+  <provides>
+    <mediatype>application/x-rpm</mediatype>
+    <mediatype>application/vnd.rpm</mediatype>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+  </categories>
+  <url type="homepage">https://example.com/rpm-installer-gui</url>
+</component>
