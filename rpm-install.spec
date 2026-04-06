@@ -1,7 +1,7 @@
 %define _debugsource_template %{nil}
 %define debug_package %{nil}
 
-%global app_id com.example.RpmInstall
+%global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
 Version:        0.3.4

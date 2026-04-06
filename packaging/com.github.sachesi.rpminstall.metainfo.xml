@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.example.RpmInstall</id>
+  <id>com.github.sachesi.rpminstall</id>
   <name>RPM Installer</name>
   <summary>Install local RPM files through dnf5daemon</summary>
   <metadata_license>MIT</metadata_license>
@@ -15,7 +15,7 @@
       </description>
     </release>
   </releases>
-  <launchable type="desktop-id">com.example.RpmInstall.desktop</launchable>
+  <launchable type="desktop-id">com.github.sachesi.rpminstall.desktop</launchable>
   <provides>
     <mediatype>application/x-rpm</mediatype>
     <mediatype>application/vnd.rpm</mediatype>
