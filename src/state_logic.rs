@@ -109,7 +109,7 @@ impl InstallRelation {
                 fallback_context: "Not installed",
             },
             InstallRelation::SameVersion => RelationSummary {
-                state_title: "Reinstall available",
+                state_title: "Reinstall",
                 state_subtitle: "The same version is already installed.",
                 fallback_context: "Same version installed",
             },

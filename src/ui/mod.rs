@@ -174,18 +174,18 @@ impl Ui {
             .application(app)
             .title("RPM Installer")
             .default_width(560)
-            .default_height(600)
+            .default_height(300)
             .resizable(false)
             .build();
-        window.set_size_request(560, 600);
+        window.set_size_request(560, 300);
 
         let header = adw::HeaderBar::builder()
             .show_end_title_buttons(true)
             .build();
         header.add_css_class("flat");
         let header_title = adw::WindowTitle::builder()
-            .title("Install Local RPM")
-            .subtitle("Fedora")
+            .title("Install RPM")
+            // .subtitle("Fedora")
             .build();
         header.set_title_widget(Some(&header_title));
 
