@@ -1,5 +1,4 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::HashMap;
 
 use adw::prelude::*;
 use gtk::pango;
@@ -160,11 +159,11 @@ impl Ui {
             .build();
         let content = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(12)
-            .margin_top(12)
-            .margin_bottom(12)
+            .spacing(4)
             .margin_start(12)
             .margin_end(12)
+            .margin_top(8)
+            .margin_bottom(10)
             .build();
         content.append(&identity_group);
         content.append(&status_group);
@@ -196,6 +195,7 @@ impl Ui {
             action_button,
             toast_overlay,
             detail_rows,
+            details_expander,
         }
     }
 
@@ -306,14 +306,114 @@ impl Ui {
         self.status_page.set_visible(true);
         self.status_revealer.set_reveal_child(true);
     }
+}
 
     pub fn hide_status(&self) {
         self.status_page.set_visible(false);
         self.status_revealer.set_reveal_child(false);
     }
 
-    pub fn toast(&self, message: &str) {
-        self.toast_overlay.add_toast(adw::Toast::new(message));
+    rows
+}
+
+fn shorten_middle(input: &str, max_len: usize) -> String {
+    if input.chars().count() <= max_len || max_len <= 5 {
+        return input.to_string();
+    }
+
+    let keep = (max_len - 1) / 2;
+    let start = input.chars().take(keep).collect::<String>();
+    let end = input
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+
+    format!("{start}…{end}")
+}
+
+fn insert_if_text(map: &mut HashMap<DetailKey, String>, key: DetailKey, value: Option<&str>) {
+    if let Some(text) = value.map(str::trim).filter(|v| !v.is_empty()) {
+        map.insert(key, text.to_string());
+    }
+}
+
+fn insert_if_u64<F>(
+    map: &mut HashMap<DetailKey, String>,
+    key: DetailKey,
+    value: Option<u64>,
+    formatter: F,
+) where
+    F: Fn(Option<u64>) -> String,
+{
+    if let Some(v) = value {
+        map.insert(key, formatter(Some(v)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn shortens_middle_path_for_hero_label() {
+        let long =
+            "/very/long/path/to/some/rpm/files/build-output/package-name-1.2.3-1.fc42.x86_64.rpm";
+        let short = shorten_middle(long, 32);
+        assert!(short.contains('…'));
+        assert!(short.len() <= 33);
+    }
+
+    #[test]
+    fn metadata_model_skips_empty_fields() {
+        let info = RpmInfo {
+            path: PathBuf::from("/tmp/test.rpm"),
+            name: "testpkg".to_string(),
+            epoch: None,
+            version: "1.2.3".to_string(),
+            release: "1.fc42".to_string(),
+            arch: "x86_64".to_string(),
+            summary: Some("".to_string()),
+            description: Some("Useful package".to_string()),
+            license: None,
+            vendor: None,
+            packager: None,
+            url: Some("https://example.org".to_string()),
+            installed_size: None,
+            package_size: Some(1024),
+            source_rpm: None,
+            signature_status: Some("Signed".to_string()),
+        };
+
+        let installed = InstalledState {
+            relation: InstallRelation::NotInstalled,
+            installed_evr_arch: None,
+        };
+
+        let model = PackageViewModel::from_inputs(&info, &installed, ActionMode::Install);
+
+        assert!(!model.details.contains_key(&DetailKey::Summary));
+        assert!(!model.details.contains_key(&DetailKey::InstalledSize));
+        assert_eq!(
+            model
+                .details
+                .get(&DetailKey::Description)
+                .map(String::as_str),
+            Some("Useful package")
+        );
+        assert_eq!(
+            model.details.get(&DetailKey::Homepage).map(String::as_str),
+            Some("https://example.org")
+        );
+        assert_eq!(
+            model.details.get(&DetailKey::Signature).map(String::as_str),
+            Some("Signed")
+        );
     }
 }
 
