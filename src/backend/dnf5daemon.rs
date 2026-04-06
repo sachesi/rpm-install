@@ -111,10 +111,11 @@ where
         .map_err(AppError::Other)?;
 
     let tx_options = HashMap::from([("interactive".to_string(), Value::from(true))]);
-    let mut run_tx = goal
+    let run_tx = goal
         .call_method("do_transaction", &(tx_options,))
         .map(|r| r.map_err(|err| map_dbus_error(err, operation)))
         .fuse();
+    futures_util::pin_mut!(run_tx);
 
     loop {
         futures_util::select! {
