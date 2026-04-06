@@ -29,10 +29,11 @@ Benefits:
 
 ## Release notes
 
-### 0.1.1 (2026-04-06)
+### 0.1.2 (2026-04-06)
 
-- Stabilization pass focused on stricter local-path validation, safer user-facing error text, and reduced state-copy duplication.
-- Packaging and desktop metadata now consistently reference dnf5daemon.
+- Added relation-colored installed-state heading (install/reinstall/downgrade) for quicker visual status scanning.
+- Added an Uninstall action (bottom-left) when the package is already installed.
+- Continued stabilization hardening for path/metadata validation and cleaner error handling.
 
 ### Service behavior
 
@@ -48,6 +49,7 @@ For local RPM input, operation selection is driven by installed-state classifica
 - `SameVersion` → backend operation `reinstall` (button: Reinstall)
 - `Upgrade` → backend operation `upgrade` (button: Install)
 - `Downgrade` → backend operation `downgrade` (button: Install + explicit confirmation)
+- Installed relations (`SameVersion`, `Upgrade`, `Downgrade`) also expose `remove` (button: Uninstall)
 
 No fake reinstall/downgrade labeling is used.
 

@@ -87,6 +87,7 @@ fn build_main_window(
     let installed = detect_installed(&info)?;
     let operation = operation_for_relation(&installed.relation);
     let action_mode = action_for_relation(&installed.relation);
+    let package_name = info.name.clone();
 
     let ui = Ui::new(app);
     ui.bind_package(&info, &installed, action_mode);
@@ -109,6 +110,9 @@ fn build_main_window(
         action_mode,
         installed.relation.clone(),
     );
+    if !matches!(installed.relation, InstallRelation::NotInstalled) {
+        wire_uninstall_action(&ui, &installed.relation, package_name);
+    }
 
     Ok(())
 }
@@ -161,65 +165,116 @@ fn wire_install_action(
                     return;
                 }
 
-                ui_for_response.set_running(true);
-
-                let ui_for_async = ui_for_response.clone();
                 let path = info_for_response.path.display().to_string();
-                glib::MainContext::default().spawn_local(async move {
-                    let ui_for_progress = ui_for_async.clone();
-                    let result = run_local_rpm_transaction(&path, operation, move |progress| {
-                        ui_for_progress.set_progress(progress);
-                    })
-                    .await;
-
-                    ui_for_async.set_running(false);
-
-                    match result {
-                        Ok(done) => {
-                            let msg = format!("{} successfully", done.verb_past());
-                            ui_for_async.show_status(
-                                "emblem-ok-symbolic",
-                                "Transaction complete",
-                                &msg,
-                                Some("success"),
-                            );
-                            info!("{}: {}", msg, path);
-
-                            let win = ui_for_async.window.clone();
-                            glib::timeout_add_seconds_local_once(2, move || {
-                                win.close();
-                            });
-                        }
-                        Err(err) => {
-                            let human = humanize_error(&err, operation);
-                            let icon = if matches!(
-                                err,
-                                AppError::TransactionCanceled | AppError::AuthCanceled
-                            ) {
-                                "process-stop-symbolic"
-                            } else {
-                                "dialog-error-symbolic"
-                            };
-                            let css = if matches!(
-                                err,
-                                AppError::TransactionCanceled | AppError::AuthCanceled
-                            ) {
-                                None
-                            } else {
-                                Some("error")
-                            };
-                            ui_for_async.show_status(
-                                icon,
-                                "Transaction did not complete",
-                                &human,
-                                css,
-                            );
-                            error!("Install flow failed: {err}");
-                        }
-                    }
-                });
+                run_confirmed_transaction(
+                    ui_for_response.clone(),
+                    path,
+                    operation,
+                    "Install flow failed",
+                );
             },
         );
+    });
+}
+
+fn wire_uninstall_action(ui: &Ui, relation: &InstallRelation, package_name: String) {
+    let relation = relation.clone();
+    let ui_cloned = ui.clone();
+    ui.uninstall_button.connect_clicked(move |_| {
+        ui_cloned.hide_status();
+
+        let body = match &relation {
+            InstallRelation::SameVersion => {
+                "The currently installed package version will be removed."
+            }
+            InstallRelation::Upgrade | InstallRelation::Downgrade => {
+                "The currently installed package will be removed from the system."
+            }
+            InstallRelation::NotInstalled => return,
+        };
+
+        let confirm = adw::AlertDialog::builder()
+            .heading("Confirm uninstall")
+            .body(body)
+            .build();
+        confirm.add_response("cancel", "Cancel");
+        confirm.add_response("ok", "Uninstall");
+        confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
+        confirm.set_default_response(Some("cancel"));
+        confirm.set_close_response("cancel");
+
+        let ui_for_response = ui_cloned.clone();
+        let pkg_for_response = package_name.clone();
+        confirm.choose(
+            Some(&ui_cloned.window),
+            gio::Cancellable::NONE,
+            move |response| {
+                if response != "ok" {
+                    ui_for_response.show_status(
+                        "process-stop-symbolic",
+                        "Canceled",
+                        "Uninstall was canceled before it started.",
+                        None,
+                    );
+                    return;
+                }
+
+                run_confirmed_transaction(
+                    ui_for_response.clone(),
+                    pkg_for_response.clone(),
+                    BackendOperation::Remove,
+                    "Uninstall flow failed",
+                );
+            },
+        );
+    });
+}
+
+fn run_confirmed_transaction(ui: Ui, spec: String, operation: BackendOperation, log_prefix: &str) {
+    ui.set_running(true);
+
+    glib::MainContext::default().spawn_local(async move {
+        let ui_for_progress = ui.clone();
+        let result = run_local_rpm_transaction(&spec, operation, move |progress| {
+            ui_for_progress.set_progress(progress);
+        })
+        .await;
+
+        ui.set_running(false);
+
+        match result {
+            Ok(done) => {
+                let msg = format!("{} successfully", done.verb_past());
+                ui.show_status(
+                    "emblem-ok-symbolic",
+                    "Transaction complete",
+                    &msg,
+                    Some("success"),
+                );
+                info!("{}: {}", msg, spec);
+
+                let win = ui.window.clone();
+                glib::timeout_add_seconds_local_once(2, move || {
+                    win.close();
+                });
+            }
+            Err(err) => {
+                let human = humanize_error(&err, operation);
+                let icon = if matches!(err, AppError::TransactionCanceled | AppError::AuthCanceled)
+                {
+                    "process-stop-symbolic"
+                } else {
+                    "dialog-error-symbolic"
+                };
+                let css = if matches!(err, AppError::TransactionCanceled | AppError::AuthCanceled) {
+                    None
+                } else {
+                    Some("error")
+                };
+                ui.show_status(icon, "Transaction did not complete", &human, css);
+                error!("{log_prefix}: {err}");
+            }
+        }
     });
 }
 

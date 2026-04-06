@@ -7,7 +7,7 @@ use gtk::{Align, Orientation};
 use crate::backend::types::BackendOperation;
 use crate::installed_state::InstalledState;
 use crate::rpm_info::{RpmInfo, format_size};
-use crate::state_logic::ActionMode;
+use crate::state_logic::{ActionMode, InstallRelation};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum DetailKey {
@@ -59,6 +59,7 @@ pub struct Ui {
     pub spinner: gtk::Spinner,
     pub progress: gtk::ProgressBar,
     pub action_button: gtk::Button,
+    pub uninstall_button: gtk::Button,
     pub state_title_label: gtk::Label,
     state_subtitle_label: gtk::Label,
     status_icon: gtk::Image,
@@ -76,8 +77,17 @@ struct PackageViewModel {
     installed_state_title: String,
     installed_subtitle: String,
     installed_context: String,
+    state_tone: StateTone,
     action_label: &'static str,
+    show_uninstall: bool,
     details: HashMap<DetailKey, String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StateTone {
+    Install,
+    Reinstall,
+    Downgrade,
 }
 
 impl PackageViewModel {
@@ -92,6 +102,11 @@ impl PackageViewModel {
         let action_label = match action_mode {
             ActionMode::Install | ActionMode::Downgrade => BackendOperation::Install.label(),
             ActionMode::Reinstall => BackendOperation::Reinstall.label(),
+        };
+        let state_tone = match action_mode {
+            ActionMode::Install => StateTone::Install,
+            ActionMode::Reinstall => StateTone::Reinstall,
+            ActionMode::Downgrade => StateTone::Downgrade,
         };
 
         let mut details = HashMap::new();
@@ -143,7 +158,9 @@ impl PackageViewModel {
                 .installed_evr_arch
                 .clone()
                 .unwrap_or(fallback_state),
+            state_tone,
             action_label,
+            show_uninstall: !matches!(installed.relation, InstallRelation::NotInstalled),
             details,
         }
     }
@@ -151,6 +168,8 @@ impl PackageViewModel {
 
 impl Ui {
     pub fn new(app: &adw::Application) -> Self {
+        install_custom_css();
+
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("RPM Installer")
@@ -395,6 +414,12 @@ impl Ui {
             .css_classes(["suggested-action", "pill"])
             .halign(Align::End)
             .build();
+        let uninstall_button = gtk::Button::builder()
+            .label("Uninstall")
+            .css_classes(["destructive-action", "pill"])
+            .halign(Align::Start)
+            .visible(false)
+            .build();
 
         let footer_actions = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
@@ -405,6 +430,7 @@ impl Ui {
             .margin_bottom(FOOTER_PADDING)
             .build();
         let footer_spacer = gtk::Box::builder().hexpand(true).build();
+        footer_actions.append(&uninstall_button);
         footer_actions.append(&footer_spacer);
         footer_actions.append(&action_button);
 
@@ -453,6 +479,7 @@ impl Ui {
             spinner,
             progress,
             action_button,
+            uninstall_button,
             state_title_label,
             state_subtitle_label,
             status_icon,
@@ -476,10 +503,12 @@ impl Ui {
         self.path_label.set_label(&model.path_display);
         self.state_title_label
             .set_label(&model.installed_state_title);
+        self.set_state_tone(model.state_tone);
         self.state_subtitle_label
             .set_label(&model.installed_subtitle);
         self.context_label.set_label(&model.installed_context);
         self.action_button.set_label(model.action_label);
+        self.uninstall_button.set_visible(model.show_uninstall);
         self.details_title.set_label(if model.details.is_empty() {
             "No package details"
         } else {
@@ -501,6 +530,7 @@ impl Ui {
 
     pub fn set_running(&self, running: bool) {
         self.action_button.set_sensitive(!running);
+        self.uninstall_button.set_sensitive(!running);
         self.progress_revealer.set_reveal_child(running);
         self.spinner.set_spinning(running);
 
@@ -547,6 +577,41 @@ impl Ui {
         self.status_title.set_label("");
         self.status_body.set_label("");
     }
+
+    fn set_state_tone(&self, tone: StateTone) {
+        self.state_title_label.remove_css_class("state-install");
+        self.state_title_label.remove_css_class("state-reinstall");
+        self.state_title_label.remove_css_class("state-downgrade");
+
+        match tone {
+            StateTone::Install => self.state_title_label.add_css_class("state-install"),
+            StateTone::Reinstall => self.state_title_label.add_css_class("state-reinstall"),
+            StateTone::Downgrade => self.state_title_label.add_css_class("state-downgrade"),
+        }
+    }
+}
+
+fn install_custom_css() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        let provider = gtk::CssProvider::new();
+        provider.load_from_data(
+            "
+            .state-install { color: #3A944A; }
+            .state-reinstall { color: #3584E4; }
+            .state-downgrade { color: #3584E4; }
+            ",
+        );
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
+    });
 }
 
 fn shorten_middle(input: &str, max_len: usize) -> String {
