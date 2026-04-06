@@ -13,6 +13,9 @@ pub enum AppError {
     #[error("Directories are not supported")]
     DirectoryNotSupported,
 
+    #[error("Only regular files are supported")]
+    NonRegularFile,
+
     #[error("Package appears to be a source RPM and is not installable through this GUI")]
     SourceRpmNotInstallable,
 

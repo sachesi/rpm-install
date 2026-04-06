@@ -125,30 +125,11 @@ fn wire_install_action(
     ui.action_button.connect_clicked(move |_| {
         ui_cloned.hide_status();
 
-        let (heading, body, destructive) = match relation {
-            InstallRelation::Downgrade => (
-                "Confirm downgrade",
-                "A newer version is already installed. Continue and downgrade to this local RPM?",
-                true,
-            ),
-            InstallRelation::SameVersion => (
-                "Confirm reinstall",
-                "This exact version is already installed. Continue with a reinstall?",
-                false,
-            ),
-            InstallRelation::Upgrade => (
-                "Confirm install",
-                "An older version is installed. Continue to upgrade using this local RPM?",
-                false,
-            ),
-            InstallRelation::NotInstalled => {
-                ("Confirm install", "Install this local RPM package?", false)
-            }
-        };
+        let confirm_copy = relation.confirmation_copy();
 
         let confirm = adw::AlertDialog::builder()
-            .heading(heading)
-            .body(body)
+            .heading(confirm_copy.heading)
+            .body(confirm_copy.body)
             .build();
         let confirm_action_label = match action_mode {
             ActionMode::Install | ActionMode::Downgrade => "Install",
@@ -156,7 +137,7 @@ fn wire_install_action(
         };
         confirm.add_response("cancel", "Cancel");
         confirm.add_response("ok", confirm_action_label);
-        if destructive {
+        if confirm_copy.destructive {
             confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
         } else {
             confirm.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
@@ -243,6 +224,8 @@ fn wire_install_action(
 }
 
 fn humanize_error(error: &AppError, operation: BackendOperation) -> String {
+    const MAX_ERROR_CHARS: usize = 280;
+
     match error {
         AppError::UnsupportedFileType => "Only local .rpm files are supported.".to_string(),
         AppError::DirectoryNotSupported => {
@@ -256,8 +239,20 @@ fn humanize_error(error: &AppError, operation: BackendOperation) -> String {
             "This system's dnf5daemon runtime does not support {:?} for the selected local RPM.",
             operation
         ),
-        AppError::InvalidLocalRpm(details) => format!("The selected RPM is unreadable or invalid: {details}"),
-        AppError::OperationFailed { details, .. } => details.clone(),
-        other => other.to_string(),
+        AppError::NonRegularFile => "Please choose a regular .rpm file.".to_string(),
+        AppError::InvalidLocalRpm(details) => format!(
+            "The selected RPM is unreadable or invalid: {}",
+            clamp_message(details, MAX_ERROR_CHARS)
+        ),
+        AppError::OperationFailed { details, .. } => clamp_message(details, MAX_ERROR_CHARS),
+        AppError::Other(_) => "Unexpected internal failure. Please retry and check logs for details.".to_string(),
     }
+}
+
+fn clamp_message(message: &str, max_chars: usize) -> String {
+    let mut trimmed = message.trim().chars().take(max_chars).collect::<String>();
+    if message.chars().count() > max_chars {
+        trimmed.push('…');
+    }
+    trimmed
 }
