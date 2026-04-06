@@ -82,28 +82,12 @@ struct PackageViewModel {
 
 impl PackageViewModel {
     fn from_inputs(info: &RpmInfo, installed: &InstalledState, action_mode: ActionMode) -> Self {
-        let (installed_state_title, installed_subtitle, fallback_state) = match installed.relation {
-            InstallRelation::NotInstalled => (
-                "Ready to install",
-                "This package is not currently installed.",
-                "Not installed".to_string(),
-            ),
-            InstallRelation::SameVersion => (
-                "Reinstall available",
-                "The same version is already installed.",
-                "Same version installed".to_string(),
-            ),
-            InstallRelation::Upgrade => (
-                "Upgrade available",
-                "A previous version is installed and can be upgraded.",
-                "Older version installed".to_string(),
-            ),
-            InstallRelation::Downgrade => (
-                "Downgrade warning",
-                "A newer version is installed; this will downgrade it.",
-                "Newer version installed".to_string(),
-            ),
-        };
+        let summary = installed.relation.summary();
+        let (installed_state_title, installed_subtitle, fallback_state) = (
+            summary.state_title,
+            summary.state_subtitle,
+            summary.fallback_context.to_string(),
+        );
 
         let action_label = match action_mode {
             ActionMode::Install | ActionMode::Downgrade => BackendOperation::Install.label(),

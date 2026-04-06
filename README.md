@@ -27,6 +27,13 @@ Benefits:
 - Polkit agent available for authentication prompts.
 - GTK4/libadwaita runtime.
 
+## Release notes
+
+### 0.1.1 (2026-04-06)
+
+- Stabilization pass focused on stricter local-path validation, safer user-facing error text, and reduced state-copy duplication.
+- Packaging and desktop metadata now consistently reference dnf5daemon.
+
 ### Service behavior
 
 `dnf5daemon` is treated as D-Bus activation-based. The app does **not** require or instruct `systemctl enable dnf5daemon-server.service`.
@@ -53,7 +60,7 @@ The main window was redesigned to follow libadwaita patterns:
 - Compact `adw::Clamp` layout
 - Structured groups (`adw::PreferencesGroup`, `adw::ActionRow`, `adw::ExpanderRow`)
 - `gtk::Revealer` for transient progress and status
-- `adw::ToastOverlay` for success/toast feedback
+- `gtk::Revealer` + status card feedback for progress and result states
 - `adw::StatusPage` for readable cancellation/error/success presentation
 
 Theme handling uses `AdwStyleManager::set_color_scheme` and does not use `GtkSettings:gtk-application-prefer-dark-theme`.
