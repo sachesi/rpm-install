@@ -31,27 +31,7 @@ pub struct ClassifiedState {
 }
 
 pub fn classify_state(local: &PackageIdentity, installed: &[PackageIdentity]) -> ClassifiedState {
-    let mut best_match: Option<&PackageIdentity> = None;
-
-    for pkg in installed {
-        if pkg.name != local.name {
-            continue;
-        }
-        let arch_matches = pkg.arch == local.arch || pkg.arch == "noarch" || local.arch == "noarch";
-        if !arch_matches {
-            continue;
-        }
-
-        if best_match.is_none() {
-            best_match = Some(pkg);
-        }
-        if pkg.arch == local.arch {
-            best_match = Some(pkg);
-            break;
-        }
-    }
-
-    let Some(installed_pkg) = best_match else {
+    let Some(installed_pkg) = pick_best_installed_match(local, installed) else {
         return ClassifiedState {
             relation: InstallRelation::NotInstalled,
             installed_evr_arch: None,
@@ -67,6 +47,36 @@ pub fn classify_state(local: &PackageIdentity, installed: &[PackageIdentity]) ->
     ClassifiedState {
         relation,
         installed_evr_arch: Some(format!("{}.{}", installed_pkg.evr, installed_pkg.arch)),
+    }
+}
+
+fn pick_best_installed_match<'a>(
+    local: &PackageIdentity,
+    installed: &'a [PackageIdentity],
+) -> Option<&'a PackageIdentity> {
+    installed
+        .iter()
+        .filter(|pkg| pkg.name == local.name)
+        .filter(|pkg| is_compatible_arch(&pkg.arch, &local.arch))
+        .max_by(|a, b| compare_candidates(local, a, b))
+}
+
+fn is_compatible_arch(installed_arch: &str, local_arch: &str) -> bool {
+    installed_arch == local_arch || installed_arch == "noarch" || local_arch == "noarch"
+}
+
+fn compare_candidates(
+    local: &PackageIdentity,
+    a: &PackageIdentity,
+    b: &PackageIdentity,
+) -> Ordering {
+    let a_exact = a.arch == local.arch;
+    let b_exact = b.arch == local.arch;
+
+    match (a_exact, b_exact) {
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        _ => rpm_evr_compare(&a.evr, &b.evr),
     }
 }
 
@@ -124,5 +134,41 @@ mod tests {
             ],
         );
         assert_eq!(state.relation, InstallRelation::NotInstalled);
+    }
+
+    #[test]
+    fn prefers_latest_evr_when_multiple_installed_candidates_exist() {
+        let local = pkg("foo", "0:1.5.0-1", "x86_64");
+        let state = classify_state(
+            &local,
+            &[
+                pkg("foo", "0:1.2.0-1", "x86_64"),
+                pkg("foo", "0:1.4.0-1", "x86_64"),
+            ],
+        );
+
+        assert_eq!(state.relation, InstallRelation::Upgrade);
+        assert_eq!(
+            state.installed_evr_arch.as_deref(),
+            Some("0:1.4.0-1.x86_64")
+        );
+    }
+
+    #[test]
+    fn prefers_exact_arch_over_noarch_even_if_noarch_is_newer() {
+        let local = pkg("foo", "0:1.3.0-1", "x86_64");
+        let state = classify_state(
+            &local,
+            &[
+                pkg("foo", "0:1.2.0-1", "x86_64"),
+                pkg("foo", "0:2.0.0-1", "noarch"),
+            ],
+        );
+
+        assert_eq!(state.relation, InstallRelation::Upgrade);
+        assert_eq!(
+            state.installed_evr_arch.as_deref(),
+            Some("0:1.2.0-1.x86_64")
+        );
     }
 }

@@ -11,6 +11,10 @@ const PK_FLAG_ALLOW_REINSTALL: u64 = 1 << 4;
 const PK_FLAG_JUST_REINSTALL: u64 = 1 << 5;
 const PK_FLAG_ALLOW_DOWNGRADE: u64 = 1 << 6;
 
+const PK_EXIT_SUCCESS: u32 = 1;
+const PK_EXIT_CANCELLED: u32 = 3;
+const PK_EXIT_CANCELLED_PRIORITY: u32 = 9;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallMode {
     Install,
@@ -32,7 +36,6 @@ where
     let connection = zbus::Connection::system()
         .await
         .context("Could not connect to system D-Bus")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let flags = match mode {
@@ -88,55 +91,50 @@ where
 {
     let tx = create_transaction(connection).await?;
 
-    let mut percentage_stream = tx
-        .receive_percentage()
+    let mut progress_stream = tx
+        .receive_item_progress()
         .await
-        .context("Could not subscribe to PackageKit progress")
-        .map_err(anyhow::Error::from)
+        .context("Could not subscribe to PackageKit item progress")
         .map_err(AppError::Other)?;
     let mut error_stream = tx
         .receive_error_code()
         .await
         .context("Could not subscribe to PackageKit errors")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
     let mut finished_stream = tx
         .receive_finished()
         .await
         .context("Could not subscribe to PackageKit completion")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     tx.install_files(flags, &[file_path])
         .await
         .context("PackageKit install call failed")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let mut completion_exit: Option<u32> = None;
     loop {
         futures_util::select! {
-            progress = percentage_stream.next() => {
+            progress = progress_stream.next() => {
                 if let Some(signal) = progress {
-                    let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid progress signal")))?;
-                    on_progress(args.percentage());
+                    let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid item progress signal")))?;
+                    on_progress(*args.percentage());
                 }
             }
             error = error_stream.next() => {
                 if let Some(signal) = error {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid error signal")))?;
                     let details = args.details().to_string();
-                    let detail_lc = details.to_lowercase();
-                    if detail_lc.contains("cancel") || detail_lc.contains("denied") {
+                    if is_cancellation_code(*args.code()) || is_cancellation_details(&details) {
                         return Err(AppError::InstallationCanceled);
                     }
-                    return Err(AppError::PackageKit { code: args.code(), details });
+                    return Err(AppError::PackageKit { code: *args.code(), details });
                 }
             }
             finished = finished_stream.next() => {
                 if let Some(signal) = finished {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid finished signal")))?;
-                    completion_exit = Some(args.exit());
+                    completion_exit = Some(*args.exit());
                     break;
                 }
             }
@@ -144,15 +142,7 @@ where
         }
     }
 
-    match completion_exit {
-        Some(1) | Some(5) => Ok(()),
-        Some(_) => Err(AppError::Other(anyhow::anyhow!(
-            "PackageKit transaction ended unsuccessfully"
-        ))),
-        None => Err(AppError::Other(anyhow::anyhow!(
-            "PackageKit transaction did not report completion"
-        ))),
-    }
+    map_transaction_exit(completion_exit, "install")
 }
 
 async fn run_remove_transaction(connection: &zbus::Connection, package_id: &str) -> AppResult<()> {
@@ -162,19 +152,16 @@ async fn run_remove_transaction(connection: &zbus::Connection, package_id: &str)
         .receive_error_code()
         .await
         .context("Could not subscribe to PackageKit remove errors")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
     let mut finished_stream = tx
         .receive_finished()
         .await
         .context("Could not subscribe to PackageKit remove completion")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     tx.remove_packages(PK_FLAG_NONE, &[package_id], false, false)
         .await
         .context("PackageKit remove call failed")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let mut completion_exit: Option<u32> = None;
@@ -183,13 +170,17 @@ async fn run_remove_transaction(connection: &zbus::Connection, package_id: &str)
             error = error_stream.next() => {
                 if let Some(signal) = error {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid remove error signal")))?;
-                    return Err(AppError::PackageKit { code: args.code(), details: args.details().to_string() });
+                    let details = args.details().to_string();
+                    if is_cancellation_code(*args.code()) || is_cancellation_details(&details) {
+                        return Err(AppError::InstallationCanceled);
+                    }
+                    return Err(AppError::PackageKit { code: *args.code(), details });
                 }
             }
             finished = finished_stream.next() => {
                 if let Some(signal) = finished {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid remove finished signal")))?;
-                    completion_exit = Some(args.exit());
+                    completion_exit = Some(*args.exit());
                     break;
                 }
             }
@@ -197,13 +188,18 @@ async fn run_remove_transaction(connection: &zbus::Connection, package_id: &str)
         }
     }
 
-    match completion_exit {
-        Some(1) | Some(5) => Ok(()),
-        Some(_) => Err(AppError::Other(anyhow::anyhow!(
-            "PackageKit remove transaction ended unsuccessfully"
+    map_transaction_exit(completion_exit, "remove")
+}
+
+fn map_transaction_exit(exit: Option<u32>, phase: &str) -> AppResult<()> {
+    match exit {
+        Some(PK_EXIT_SUCCESS) => Ok(()),
+        Some(PK_EXIT_CANCELLED | PK_EXIT_CANCELLED_PRIORITY) => Err(AppError::InstallationCanceled),
+        Some(code) => Err(AppError::Other(anyhow::anyhow!(
+            "PackageKit {phase} transaction ended unsuccessfully (exit code {code})"
         ))),
         None => Err(AppError::Other(anyhow::anyhow!(
-            "PackageKit remove transaction did not report completion"
+            "PackageKit {phase} transaction did not report completion"
         ))),
     }
 }
@@ -220,25 +216,21 @@ async fn resolve_installed_package_id(
         .receive_package()
         .await
         .context("Could not subscribe to PackageKit package resolve signals")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
     let mut error_stream = tx
         .receive_error_code()
         .await
         .context("Could not subscribe to PackageKit resolve errors")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
     let mut finished_stream = tx
         .receive_finished()
         .await
         .context("Could not subscribe to PackageKit resolve completion")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     tx.resolve(0, &[package_name])
         .await
         .context("PackageKit resolve call failed")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let mut exact_match: Option<String> = None;
@@ -256,7 +248,11 @@ async fn resolve_installed_package_id(
             error = error_stream.next() => {
                 if let Some(signal) = error {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid resolve error signal")))?;
-                    return Err(AppError::PackageKit { code: args.code(), details: args.details().to_string() });
+                    let details = args.details().to_string();
+                    if is_cancellation_code(*args.code()) || is_cancellation_details(&details) {
+                        return Err(AppError::InstallationCanceled);
+                    }
+                    return Err(AppError::PackageKit { code: *args.code(), details });
                 }
             }
             finished = finished_stream.next() => {
@@ -295,25 +291,21 @@ async fn create_transaction(connection: &zbus::Connection) -> AppResult<Transact
     let pk = PackageKitProxy::new(connection)
         .await
         .context("Could not create PackageKit proxy")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let tx_path = pk
         .create_transaction()
         .await
         .context("Could not create PackageKit transaction")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     TransactionProxy::builder(connection)
         .path(tx_path)
         .context("Invalid PackageKit transaction path")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?
         .build()
         .await
         .context("Could not bind PackageKit transaction proxy")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)
 }
 
@@ -328,4 +320,13 @@ fn is_reinstall_capability_error(code: u32, details: &str) -> bool {
 fn is_downgrade_not_supported(code: u32, details: &str) -> bool {
     let detail_lc = details.to_lowercase();
     code == 9 || detail_lc.contains("downgrade") || detail_lc.contains("not supported")
+}
+
+fn is_cancellation_code(code: u32) -> bool {
+    code == PK_EXIT_CANCELLED || code == PK_EXIT_CANCELLED_PRIORITY
+}
+
+fn is_cancellation_details(details: &str) -> bool {
+    let detail_lc = details.to_lowercase();
+    detail_lc.contains("cancel") || detail_lc.contains("denied")
 }

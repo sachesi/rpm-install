@@ -21,7 +21,6 @@ pub fn detect_installed(info: &RpmInfo) -> AppResult<InstalledState> {
         .arg(&info.name)
         .output()
         .with_context(|| "Failed to invoke rpm query command")
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     if !output.status.success() {
