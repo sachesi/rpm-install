@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=RPM Installer GUI
+Name=RPM Installer
 Comment=Install local RPM packages with dnf5daemon
-Exec=rpm-installer-gui %f
-Icon=com.example.RpmInstallerGui
+Exec=rpm-install %f
+Icon=com.example.RpmInstaller
 Terminal=false
 Categories=System;PackageManager;GTK;
 StartupNotify=true

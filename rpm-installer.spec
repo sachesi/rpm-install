@@ -1,14 +1,14 @@
 %define _debugsource_template %{nil}
 %define debug_package %{nil}
 
-%global app_id com.example.RpmInstallerGui
+%global app_id com.example.RpmInstaller
 
-Name:           rpm-installer-gui
-Version:        0.1.2
+Name:           rpm-installer
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        MIT
-URL:            https://example.com/rpm-installer-gui
+URL:            https://example.com/rpm-installer
 %if ! 0%{?_build_in_place}
 Source0:        %{url}/archive/refs/tags/%{version}/%{name}-%{version}.tar.gz
 %endif
@@ -53,7 +53,7 @@ cargo build --release
 
 %install
 %if 0%{?_build_in_place}
-install -Dm755 target/release/%{name} %{buildroot}%{_bindir}/%{name}
+install -Dm755 target/release/rpm-install %{buildroot}%{_bindir}/rpm-install
 %else
 %cargo_install
 %endif
@@ -84,15 +84,19 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 
 %files
 %doc README.md
-%{_bindir}/%{name}
+%{_bindir}/rpm-install
 %{_datadir}/applications/%{app_id}.desktop
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
-* Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.2-1
+* Mon Apr 06 2026 rpm-installer packager <packager@example.com> - 0.1.3-1
+- Rename project from rpm-installer-gui to rpm-installer
+- Rename compiled binary to rpm-install
+
+* Mon Apr 06 2026 rpm-installer packager <packager@example.com> - 0.1.2-1
 - Add colored install-state heading cues and uninstall action for installed packages
 - Keep metadata/path validation and error handling hardening from stabilization pass
 
-* Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.0-1
+* Mon Apr 06 2026 rpm-installer packager <packager@example.com> - 0.1.0-1
 - Initial Fedora package with COPR-friendly Source0 mode
 - Keep local build-in-place workflow via --define '_build_in_place 1'
