@@ -22,6 +22,7 @@ pub struct Ui {
     pub error_revealer: gtk::Revealer,
     pub error_label: gtk::Label,
     pub toast_overlay: adw::ToastOverlay,
+    pub detail_rows: Rc<RefCell<Vec<adw::ActionRow>>>,
 }
 
 impl Ui {
@@ -191,8 +192,6 @@ impl Ui {
         toast_overlay.set_child(Some(&main_box));
         window.set_content(Some(&toast_overlay));
 
-        window.set_data("detail_rows", detail_rows);
-
         Self {
             window,
             title_label,
@@ -205,6 +204,7 @@ impl Ui {
             error_revealer,
             error_label,
             toast_overlay,
+            detail_rows,
         }
     }
 
@@ -245,39 +245,34 @@ impl Ui {
                 .unwrap_or_else(|| "Installed: not present".to_string()),
         );
 
-        if let Some(rows_rc) = self
-            .window
-            .data::<Rc<RefCell<Vec<adw::ActionRow>>>>("detail_rows")
-        {
-            let rows = rows_rc.borrow();
-            let values = vec![
-                info.name.clone(),
-                format!(
-                    "{}{}-{}",
-                    info.epoch.map(|e| format!("{e}:")).unwrap_or_default(),
-                    info.version,
-                    info.release
-                ),
-                info.arch.clone(),
-                info.summary.clone().unwrap_or_else(|| "—".to_string()),
-                info.description.clone().unwrap_or_else(|| "—".to_string()),
-                info.license.clone().unwrap_or_else(|| "—".to_string()),
-                info.vendor.clone().unwrap_or_else(|| "—".to_string()),
-                info.packager.clone().unwrap_or_else(|| "—".to_string()),
-                info.url.clone().unwrap_or_else(|| "—".to_string()),
-                format_size(info.installed_size),
-                format_size(info.package_size),
-                info.source_rpm.clone().unwrap_or_else(|| "—".to_string()),
-                info.path.display().to_string(),
-                info.signature_status
-                    .clone()
-                    .unwrap_or_else(|| "Unknown".to_string()),
-            ];
+        let rows = self.detail_rows.borrow();
+        let values = vec![
+            info.name.clone(),
+            format!(
+                "{}{}-{}",
+                info.epoch.map(|e| format!("{e}:")).unwrap_or_default(),
+                info.version,
+                info.release
+            ),
+            info.arch.clone(),
+            info.summary.clone().unwrap_or_else(|| "—".to_string()),
+            info.description.clone().unwrap_or_else(|| "—".to_string()),
+            info.license.clone().unwrap_or_else(|| "—".to_string()),
+            info.vendor.clone().unwrap_or_else(|| "—".to_string()),
+            info.packager.clone().unwrap_or_else(|| "—".to_string()),
+            info.url.clone().unwrap_or_else(|| "—".to_string()),
+            format_size(info.installed_size),
+            format_size(info.package_size),
+            info.source_rpm.clone().unwrap_or_else(|| "—".to_string()),
+            info.path.display().to_string(),
+            info.signature_status
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string()),
+        ];
 
-            for (idx, row) in rows.iter().enumerate() {
-                if let Some(suffix) = row.last_child().and_downcast::<gtk::Label>() {
-                    suffix.set_label(values.get(idx).map(String::as_str).unwrap_or("—"));
-                }
+        for (idx, row) in rows.iter().enumerate() {
+            if let Some(suffix) = row.last_child().and_downcast::<gtk::Label>() {
+                suffix.set_label(values.get(idx).map(String::as_str).unwrap_or("—"));
             }
         }
     }
@@ -295,6 +290,13 @@ impl Ui {
         let fraction = (pct.min(100) as f64) / 100.0;
         self.progress.set_fraction(fraction);
         self.progress.set_text(Some(&format!("{pct}%")));
+    }
+
+    pub fn show_canceled(&self, message: &str) {
+        self.hide_error();
+        self.status_label.set_label(message);
+        self.set_busy(false);
+        self.toast(message);
     }
 
     pub fn show_error(&self, message: &str) {
