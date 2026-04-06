@@ -21,7 +21,7 @@ BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  desktop-file-utils
 BuildRequires:  appstream
 
-Requires:       packagekit
+Requires:       PackageKit
 
 %description
 %{summary}.
