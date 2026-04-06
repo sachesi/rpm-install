@@ -194,6 +194,7 @@ impl Ui {
             .build();
 
         let version_label = secondary_label();
+        version_label.set_margin_top(2);
 
         let path_label = gtk::Label::builder()
             .halign(Align::Start)
@@ -203,10 +204,11 @@ impl Ui {
             .selectable(true)
             .build();
         path_label.set_ellipsize(pango::EllipsizeMode::Middle);
+        path_label.set_margin_top(4);
 
         let hero_box = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(6)
+            .spacing(8)
             .margin_start(CARD_PADDING)
             .margin_end(CARD_PADDING)
             .margin_top(CARD_PADDING)
@@ -229,10 +231,11 @@ impl Ui {
             .css_classes(["monospace", "dim-label"])
             .wrap(true)
             .build();
+        context_label.set_margin_top(4);
 
         let state_box = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(4)
+            .spacing(6)
             .margin_start(CARD_PADDING)
             .margin_end(CARD_PADDING)
             .margin_top(CARD_PADDING)
