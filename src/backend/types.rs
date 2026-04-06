@@ -1,4 +1,4 @@
-use crate::state_logic::{ActionMode, InstallRelation};
+use crate::state_logic::InstallRelation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendOperation {
@@ -34,14 +34,6 @@ pub fn operation_for_relation(relation: &InstallRelation) -> BackendOperation {
         InstallRelation::SameVersion => BackendOperation::Reinstall,
         InstallRelation::Upgrade => BackendOperation::Upgrade,
         InstallRelation::Downgrade => BackendOperation::Downgrade,
-    }
-}
-
-pub fn action_mode_for_operation(operation: BackendOperation) -> ActionMode {
-    match operation {
-        BackendOperation::Reinstall => ActionMode::Reinstall,
-        BackendOperation::Downgrade => ActionMode::Downgrade,
-        BackendOperation::Install | BackendOperation::Upgrade => ActionMode::Install,
     }
 }
 

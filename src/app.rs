@@ -7,7 +7,7 @@ use crate::backend::types::{BackendOperation, operation_for_relation};
 use crate::error::{AppError, AppResult};
 use crate::installed_state::detect_installed;
 use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};
-use crate::state_logic::InstallRelation;
+use crate::state_logic::{ActionMode, InstallRelation, action_for_relation};
 use crate::ui::Ui;
 
 const APP_ID: &str = "com.example.RpmInstallerGui";
@@ -86,9 +86,10 @@ fn build_main_window(
     let info = read_rpm_info(&path)?;
     let installed = detect_installed(&info)?;
     let operation = operation_for_relation(&installed.relation);
+    let action_mode = action_for_relation(&installed.relation);
 
     let ui = Ui::new(app);
-    ui.bind_package(&info, &installed, operation);
+    ui.bind_package(&info, &installed, action_mode);
     ui.hide_status();
     ui.window.present();
 
@@ -96,7 +97,13 @@ fn build_main_window(
         ui.toast("Multiple files were provided; showing the first one.");
     }
 
-    wire_install_action(&ui, info, operation, installed.relation.clone());
+    wire_install_action(
+        &ui,
+        info,
+        operation,
+        action_mode,
+        installed.relation.clone(),
+    );
 
     Ok(())
 }
@@ -105,6 +112,7 @@ fn wire_install_action(
     ui: &Ui,
     info: RpmInfo,
     operation: BackendOperation,
+    action_mode: ActionMode,
     relation: InstallRelation,
 ) {
     let ui_cloned = ui.clone();
@@ -137,15 +145,12 @@ fn wire_install_action(
             .heading(heading)
             .body(body)
             .build();
+        let confirm_action_label = match action_mode {
+            ActionMode::Install | ActionMode::Downgrade => "Install",
+            ActionMode::Reinstall => "Reinstall",
+        };
         confirm.add_response("cancel", "Cancel");
-        confirm.add_response(
-            "ok",
-            ui_cloned
-                .action_button
-                .label()
-                .as_deref()
-                .unwrap_or("Install"),
-        );
+        confirm.add_response("ok", confirm_action_label);
         if destructive {
             confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
         } else {
