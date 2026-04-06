@@ -2,11 +2,11 @@ use adw::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
+use crate::backend::{BackendOperation, install_local_file};
 use crate::error::{AppError, AppResult};
 use crate::installed_state::detect_installed;
-use crate::packagekit::{InstallMode, install_local_file};
 use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};
-use crate::state_logic::{ActionMode, action_for_relation};
+use crate::state_logic::{ActionMode, action_for_relation, backend_operation_for_relation};
 use crate::ui::Ui;
 
 const APP_ID: &str = "com.example.RpmInstallerGui";
@@ -81,38 +81,39 @@ fn build_main_window(
     }
 
     let action_mode = action_for_relation(&installed.relation);
-    let install_mode = match action_mode {
-        ActionMode::Install => InstallMode::Install,
-        ActionMode::Reinstall => InstallMode::Reinstall,
-        ActionMode::Downgrade => InstallMode::Downgrade,
-    };
+    let backend_operation = backend_operation_for_relation(&installed.relation);
 
-    wire_install_action(&ui, info, install_mode);
+    wire_install_action(&ui, info, action_mode, backend_operation);
 
     Ok(())
 }
 
-fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
+fn wire_install_action(
+    ui: &Ui,
+    info: RpmInfo,
+    action_mode: ActionMode,
+    backend_operation: BackendOperation,
+) {
     let ui_cloned = ui.clone();
 
     ui.install_button.connect_clicked(move |_| {
         ui_cloned.hide_error();
 
-        let (heading, action_label, body) = match mode {
-            InstallMode::Install => (
+        let (heading, action_label, body) = match action_mode {
+            ActionMode::Install => (
                 "Confirm install",
                 "Install",
-                "This action will use PackageKit and may require administrator authentication.",
+                "This action uses Fedora's dnf5daemon backend and may require administrator authentication.",
             ),
-            InstallMode::Reinstall => (
+            ActionMode::Reinstall => (
                 "Confirm reinstall",
                 "Reinstall",
-                "This package version is already installed. The transaction will request native reinstall semantics from PackageKit and may require administrator authentication.",
+                "This exact build is already installed. The transaction will request a true dnf5daemon reinstall and may require administrator authentication.",
             ),
-            InstallMode::Downgrade => (
+            ActionMode::Downgrade => (
                 "Confirm downgrade",
-                "Downgrade",
-                "A newer version is already installed. Continue and downgrade to this version?",
+                "Install",
+                "A newer version is already installed. Continue to downgrade to this local RPM using dnf5daemon?",
             ),
         };
 
@@ -129,90 +130,66 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
 
         let ui_for_response = ui_cloned.clone();
         let info_for_response = info.clone();
-        confirm.choose(
-            Some(&ui_cloned.window),
-            gio::Cancellable::NONE,
-            move |response| {
-                if response != "ok" {
-                    ui_for_response.toast("Installation canceled.");
-                    return;
-                }
+        confirm.choose(Some(&ui_cloned.window), gio::Cancellable::NONE, move |response| {
+            if response != "ok" {
+                ui_for_response.toast("Installation canceled.");
+                return;
+            }
 
-                ui_for_response.set_busy(true);
-                ui_for_response
-                    .status_label
-                    .set_label("Running installation via PackageKit…");
+            ui_for_response.set_busy(true);
+            ui_for_response.status_label.set_label("Running installation via dnf5daemon…");
 
-                let ui_for_async = ui_for_response.clone();
-                let path = info_for_response.path.display().to_string();
-                let package_name = info_for_response.name.clone();
-                let target_arch = info_for_response.arch.clone();
-                let target_evr = format!(
-                    "{}:{}-{}",
-                    info_for_response.epoch.unwrap_or(0),
-                    info_for_response.version,
-                    info_for_response.release
-                );
+            let ui_for_async = ui_for_response.clone();
+            let path = info_for_response.path.display().to_string();
 
-                glib::MainContext::default().spawn_local(async move {
-                    let ui_for_progress = ui_for_async.clone();
-                    let result = install_local_file(
-                        &path,
-                        &package_name,
-                        &target_arch,
-                        &target_evr,
-                        mode,
-                        move |pct| {
-                            ui_for_progress.set_progress(pct);
-                        },
-                    )
-                    .await;
+            glib::MainContext::default().spawn_local(async move {
+                let ui_for_progress = ui_for_async.clone();
+                let result = install_local_file(&path, backend_operation, move |pct| {
+                    ui_for_progress.set_progress(pct);
+                })
+                .await;
 
-                    match result {
-                        Ok(done) => {
-                            ui_for_async.set_busy(false);
-                            let msg = match done {
-                                InstallMode::Reinstall => "Reinstalled successfully",
-                                InstallMode::Downgrade => "Installed (downgrade) successfully",
-                                InstallMode::Install => "Installed successfully",
-                            };
-                            ui_for_async.status_label.set_label(msg);
-                            ui_for_async.toast(msg);
-                            info!("{msg}: {}", path);
+                match result {
+                    Ok(done) => {
+                        ui_for_async.set_busy(false);
+                        let msg = match done {
+                            BackendOperation::Reinstall => "Reinstalled successfully",
+                            BackendOperation::Downgrade => "Installed (downgrade) successfully",
+                            BackendOperation::Upgrade | BackendOperation::Install => "Installed successfully",
+                        };
+                        ui_for_async.status_label.set_label(msg);
+                        ui_for_async.toast(msg);
+                        info!("{msg}: {path}");
 
-                            let win = ui_for_async.window.clone();
-                            glib::timeout_add_seconds_local_once(2, move || {
-                                win.close();
-                            });
-                        }
-                        Err(AppError::InstallationCanceled) => {
-                            ui_for_async.show_canceled("Installation canceled.");
-                        }
-                        Err(err) => {
-                            ui_for_async.show_error(&humanize_error(&err));
-                            error!("Install failed: {err}");
-                        }
+                        let win = ui_for_async.window.clone();
+                        glib::timeout_add_seconds_local_once(2, move || {
+                            win.close();
+                        });
                     }
-                });
-            },
-        );
+                    Err(AppError::TransactionCanceled | AppError::AuthCanceled) => {
+                        ui_for_async.show_canceled("Installation canceled.");
+                    }
+                    Err(err) => {
+                        ui_for_async.show_error(&humanize_error(&err));
+                        error!("Install failed: {err}");
+                    }
+                }
+            });
+        });
     });
 }
 
 fn humanize_error(error: &AppError) -> String {
     match error {
         AppError::UnsupportedFileType => "Only local .rpm files are supported.".to_string(),
-        AppError::DirectoryNotSupported => {
-            "Please choose an RPM file, not a directory.".to_string()
+        AppError::DirectoryNotSupported => "Please choose an RPM file, not a directory.".to_string(),
+        AppError::DaemonUnavailable(_) => {
+            "dnf5daemon is unavailable. Ensure dnf5daemon-server is installed and running on Fedora.".to_string()
         }
-        AppError::InstallationCanceled => "Installation canceled.".to_string(),
-        AppError::ReinstallNotSupported => {
-            "This PackageKit backend does not support reinstall for local files.".to_string()
-        }
-        AppError::DowngradeNotSupported => {
-            "This PackageKit backend does not support downgrading this package.".to_string()
-        }
-        AppError::PackageKit { details, .. } => format!("Installation failed: {details}"),
+        AppError::AuthCanceled => "Authentication was canceled or denied.".to_string(),
+        AppError::TransactionCanceled => "Transaction canceled.".to_string(),
+        AppError::UnsupportedOperation(details) => format!("Unsupported backend operation: {details}"),
+        AppError::InstallFailure(details) => format!("Installation failed: {details}"),
         other => other.to_string(),
     }
 }

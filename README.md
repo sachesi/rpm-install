@@ -1,65 +1,69 @@
-# RPM Installer GUI (GTK4 + libadwaita + PackageKit)
+# RPM Installer GUI (GTK4 + libadwaita + dnf5daemon)
 
-A Linux-first desktop app in Rust for opening local `.rpm` files (including Nautilus `%f` handlers), showing metadata, and installing/reinstalling through PackageKit.
+A Fedora-focused desktop app in Rust for opening local `.rpm` files, previewing metadata, and performing native installs via **dnf5daemon** over D-Bus.
+
+## Why dnf5daemon (and not PackageKit)
+
+Fedora is converging on the DNF5 stack. This app uses `dnf5daemon` directly so local-RPM transactions map to native DNF operations and policy handling:
+
+- local install (`rpm.Rpm.install`)
+- local reinstall (`rpm.Rpm.reinstall`)
+- local upgrade (`rpm.Rpm.upgrade`)
+- local downgrade (`rpm.Rpm.downgrade`)
+- resolve + execute through `Goal.resolve` and `Goal.do_transaction`
+
+This avoids PackageKit compatibility gaps and keeps behavior aligned with Fedora's current package-management backend.
+
+## Fedora-only assumptions
+
+This project is intentionally Fedora-specific:
+
+- Requires system D-Bus service `org.rpm.dnf.v0` (`dnf5daemon-server`)
+- Requires Polkit integration for privileged transactions
+- Uses `rpm` CLI for installed-state detection and RPM EVR comparison semantics
+
+If `dnf5daemon` is unavailable, the app reports a precise daemon-unavailable error and does not fall back to PackageKit.
 
 ## Architecture summary
 
-- **Frontend:** `adw::Application` with GTK4/libadwaita widgets and a fixed-size non-resizable `adw::ApplicationWindow`.
-- **Open flow:** `gio::ApplicationFlags::HANDLES_OPEN` handles desktop-open and CLI file arguments.
-- **RPM metadata:** parsed directly from the local RPM file with the `rpm` crate for immediate display.
-- **Installed-state detection:** queries installed package EVR+arch and compares with local EVR using RPM version comparison semantics via a GTK-independent helper layer (`state_logic`) for unit-testable classification and action mapping.
-- **Install backend:** PackageKit D-Bus APIs (`CreateTransaction` + `InstallFiles`) via `packagekit-zbus`.
-- **Reinstall behavior:**
-  - Primary path: `InstallFiles` with PackageKit transaction flags `ALLOW_REINSTALL | JUST_REINSTALL`.
-  - Native fallback path (when reinstall flags are not supported by the backend): resolve installed package id via PackageKit and require exact name+arch+EVR match before removal, then `RemovePackages` + `InstallFiles`.
-  - If backend capabilities still do not permit reinstall, the UI shows a precise reinstall-not-supported message.
-- **Downgrade behavior:** uses `ALLOW_DOWNGRADE`; if unsupported by backend, UI shows a precise downgrade-not-supported message.
+- **Frontend:** GTK4 + libadwaita, fixed-size non-resizable `adw::ApplicationWindow`
+- **Open flow:** `gio::ApplicationFlags::HANDLES_OPEN` (desktop open / CLI path)
+- **RPM metadata:** parsed from the local file with the `rpm` crate
+- **Installed-state detection:** local vs installed EVR/arch classified via `state_logic`
+- **Action mapping:**
+  - `NotInstalled` / `Upgrade` → **Install** button
+  - `SameVersion` → **Reinstall** button
+  - `Downgrade` → **Install** button + explicit downgrade warning
+- **Backend mapping:**
+  - `NotInstalled` → dnf5 `install`
+  - `SameVersion` → dnf5 `reinstall`
+  - `Upgrade` → dnf5 `upgrade`
+  - `Downgrade` → dnf5 `downgrade`
+- **Progress:** transaction progress is streamed from dnf5daemon signals and fed to the UI progress bar
+- **Results:** success toast + auto-close, explicit cancellation/auth-cancel handling, precise backend errors
 
-## Crates selected (latest compatible at implementation time)
+## Runtime dependencies
+
+At runtime on Fedora you need:
+
+- `dnf5daemon-server` (service exposing `org.rpm.dnf.v0`)
+- A running D-Bus system bus
+- A Polkit authentication agent
+- GTK4 + libadwaita runtime libraries
+
+## Crates used
 
 - `gtk4 = 0.11.2`
-- `libadwaita = 0.9.1` (renamed as `adw`)
+- `libadwaita = 0.9.1` (as `adw`)
 - `gio = 0.22.4`
 - `glib = 0.22.4`
 - `zbus = 5.14.0`
-- `packagekit-zbus = 0.2.0`
 - `rpm = 0.19.0`
+- `futures-util = 0.3.31`
 - `anyhow = 1.0.102`
 - `thiserror = 2.0.18`
 - `tracing = 0.1.44`
 - `tracing-subscriber = 0.3.23`
-
-## Fedora/GNOME compatibility assumptions
-
-- Fedora-like system with:
-  - `packagekitd` running on system D-Bus
-  - PolicyKit agent available for admin authentication prompt
-  - GNOME/GTK4/libadwaita runtime and dev packages installed
-- Intended for local files only (`/path/*.rpm` and `file://` URIs that resolve to local/native files).
-
-## Installed-state categories
-
-The app distinguishes these states using EVR + arch comparison:
-
-- **Not installed** → primary action: `Install`
-- **Installed same build** → primary action: `Reinstall`
-- **Installed older version** → primary action: `Install` (update behavior)
-- **Installed newer version** → primary action: `Install` with explicit downgrade warning
-
-A compact status line near the action area shows the detected installed build, e.g. `Installed: 1:1.2.3-1.fc44.x86_64`.
-
-## Project layout
-
-- `src/main.rs` – bootstrap + tracing
-- `src/app.rs` – application wiring, file-open handling, install workflow
-- `src/ui/mod.rs` – libadwaita UI composition/state helpers
-- `src/rpm_info.rs` – path validation and RPM metadata extraction
-- `src/packagekit.rs` – PackageKit D-Bus transaction logic
-- `src/state_logic.rs` – GTK-independent installed-state classification and action mapping (+ unit tests)
-- `src/installed_state.rs` – RPM query adapter into `state_logic`
-- `src/error.rs` – typed error model
-- `assets/com.example.RpmInstallerGui.desktop` – desktop file
-- `assets/com.example.RpmInstallerGui.metainfo.xml` – AppStream metadata
 
 ## Build & run
 
@@ -68,45 +72,34 @@ cargo build
 cargo run -- /path/to/package.rpm
 ```
 
-Example with URI input:
+URI input is also supported:
 
 ```bash
 cargo run -- file:///home/user/Downloads/example.rpm
 ```
 
-## Desktop integration (local install)
+## Project layout
 
-Install desktop integration files for your user:
+- `src/main.rs` – bootstrap + tracing
+- `src/app.rs` – application wiring and UX flow
+- `src/backend/mod.rs` – backend module exports
+- `src/backend/types.rs` – backend operation enum
+- `src/backend/dnf5daemon.rs` – dnf5daemon D-Bus backend
+- `src/state_logic.rs` – installed-state classification + action/backend mapping (+ tests)
+- `src/installed_state.rs` – rpm query adapter
+- `src/rpm_info.rs` – path validation + RPM metadata extraction
+- `src/ui/mod.rs` – libadwaita UI
+- `src/error.rs` – typed app errors
 
-```bash
-install -Dm644 assets/com.example.RpmInstallerGui.desktop ~/.local/share/applications/com.example.RpmInstallerGui.desktop
-install -Dm644 assets/com.example.RpmInstallerGui.metainfo.xml ~/.local/share/metainfo/com.example.RpmInstallerGui.metainfo.xml
-update-desktop-database ~/.local/share/applications
-```
+## Real Fedora validation checklist
 
-Set default RPM opener if needed:
+Validate these scenarios on a Fedora host with `dnf5daemon-server` active:
 
-```bash
-xdg-mime default com.example.RpmInstallerGui.desktop application/x-rpm
-```
+1. Local RPM for package not installed
+2. Local RPM matching exact installed EVR+arch (reinstall)
+3. Local RPM newer than installed (upgrade)
+4. Local RPM older than installed (downgrade)
+5. Authentication canceled in Polkit prompt
+6. Daemon unavailable (service stopped)
 
-## Behavior highlights
-
-- Accepts files from Nautilus (`%f`), CLI path, or `file://` URIs.
-- Validates and canonicalizes local path.
-- Rejects non-RPM files and directories with user-facing errors.
-- Displays package metadata including summary/description/license/vendor/URL/sizes/path/signature hints.
-- Uses **Install** vs **Reinstall** CTA based on installed-state check.
-- Shows installed version context near actions.
-- Shows progress and busy state during PackageKit transaction.
-- On success, shows Installed/Reinstalled and auto-closes after ~2 seconds.
-- On failure/cancel, keeps window open with a human-friendly error.
-
-## Notes for Fedora RPM packaging later
-
-- Install binary to `%{_bindir}/rpm-installer-gui`.
-- Install desktop file to `%{_datadir}/applications/com.example.RpmInstallerGui.desktop`.
-- Install metainfo file to `%{_datadir}/metainfo/com.example.RpmInstallerGui.metainfo.xml`.
-- Add runtime deps for GTK4/libadwaita and PackageKit.
-- Add MIME registration scriptlets as needed (`update-desktop-database`, `update-mime-database`).
-- Consider providing app icon at standard hicolor paths under `%{_datadir}/icons/hicolor/...`.
+The app logs selected backend path (`install` / `upgrade` / `reinstall` / `downgrade`) via tracing to simplify runtime validation.

@@ -14,17 +14,20 @@ pub enum AppError {
     #[error("Package appears to be a source RPM and is not installable through this GUI")]
     SourceRpmNotInstallable,
 
-    #[error("Package installation was canceled")]
-    InstallationCanceled,
+    #[error("dnf5daemon is unavailable: {0}")]
+    DaemonUnavailable(String),
 
-    #[error("Reinstall is not supported by the active PackageKit backend")]
-    ReinstallNotSupported,
+    #[error("Authentication was denied or canceled")]
+    AuthCanceled,
 
-    #[error("Downgrade is not supported by the active PackageKit backend")]
-    DowngradeNotSupported,
+    #[error("Transaction was canceled")]
+    TransactionCanceled,
 
-    #[error("PackageKit reported an error ({code}): {details}")]
-    PackageKit { code: u32, details: String },
+    #[error("The requested operation is not supported by dnf5daemon: {0}")]
+    UnsupportedOperation(String),
+
+    #[error("Installation failed: {0}")]
+    InstallFailure(String),
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),

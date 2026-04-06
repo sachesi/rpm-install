@@ -2,6 +2,8 @@ use std::cmp::Ordering;
 
 use rpm::rpm_evr_compare;
 
+use crate::backend::BackendOperation;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InstallRelation {
     NotInstalled,
@@ -88,6 +90,15 @@ pub fn action_for_relation(relation: &InstallRelation) -> ActionMode {
     }
 }
 
+pub fn backend_operation_for_relation(relation: &InstallRelation) -> BackendOperation {
+    match relation {
+        InstallRelation::NotInstalled => BackendOperation::Install,
+        InstallRelation::SameVersion => BackendOperation::Reinstall,
+        InstallRelation::Upgrade => BackendOperation::Upgrade,
+        InstallRelation::Downgrade => BackendOperation::Downgrade,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +180,26 @@ mod tests {
         assert_eq!(
             state.installed_evr_arch.as_deref(),
             Some("0:1.2.0-1.x86_64")
+        );
+    }
+
+    #[test]
+    fn backend_operation_selection_matches_relation() {
+        assert_eq!(
+            backend_operation_for_relation(&InstallRelation::NotInstalled),
+            BackendOperation::Install
+        );
+        assert_eq!(
+            backend_operation_for_relation(&InstallRelation::SameVersion),
+            BackendOperation::Reinstall
+        );
+        assert_eq!(
+            backend_operation_for_relation(&InstallRelation::Upgrade),
+            BackendOperation::Upgrade
+        );
+        assert_eq!(
+            backend_operation_for_relation(&InstallRelation::Downgrade),
+            BackendOperation::Downgrade
         );
     }
 }
