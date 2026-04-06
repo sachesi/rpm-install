@@ -1,7 +1,7 @@
 mod app;
+mod backend;
 mod error;
 mod installed_state;
-mod packagekit;
 mod rpm_info;
 mod state_logic;
 mod ui;
