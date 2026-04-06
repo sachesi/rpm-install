@@ -24,11 +24,24 @@ pub fn detect_installed(info: &RpmInfo) -> AppResult<InstalledState> {
         .map_err(AppError::Other)?;
 
     if !output.status.success() {
-        return Ok(InstalledState {
-            relation: crate::state_logic::InstallRelation::NotInstalled,
-            installed_evr_arch: None,
-        });
+        if output.status.code() == Some(1) {
+            return Ok(InstalledState {
+                relation: crate::state_logic::InstallRelation::NotInstalled,
+                installed_evr_arch: None,
+            });
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(AppError::Other(anyhow::anyhow!(
+            "rpm query failed with status {:?}: {}",
+            output.status.code(),
+            stderr
+        )));
     }
+
+    let stdout = std::str::from_utf8(&output.stdout)
+        .context("rpm output was not valid UTF-8")
+        .map_err(AppError::Other)?;
 
     let local = PackageIdentity {
         name: info.name.clone(),
@@ -41,25 +54,29 @@ pub fn detect_installed(info: &RpmInfo) -> AppResult<InstalledState> {
         arch: info.arch.clone(),
     };
 
-    let installed: Vec<PackageIdentity> = String::from_utf8_lossy(&output.stdout)
+    let installed: Vec<PackageIdentity> = stdout
         .lines()
         .filter_map(|line| {
-            let fields: Vec<&str> = line.split('|').collect();
-            if fields.len() != 5 {
-                return None;
-            }
+            let mut fields = line.splitn(5, '|').map(str::trim);
+            let name = fields.next()?;
+            let epoch = fields.next()?;
+            let version = fields.next()?;
+            let release = fields.next()?;
+            let arch = fields.next()?;
             Some(PackageIdentity {
-                name: fields[0].trim().to_string(),
-                evr: format!(
-                    "{}:{}-{}",
-                    fields[1].trim(),
-                    fields[2].trim(),
-                    fields[3].trim()
-                ),
-                arch: fields[4].trim().to_string(),
+                name: name.to_string(),
+                evr: format!("{epoch}:{version}-{release}"),
+                arch: arch.to_string(),
             })
         })
         .collect();
+
+    if installed.is_empty() {
+        return Ok(InstalledState {
+            relation: crate::state_logic::InstallRelation::NotInstalled,
+            installed_evr_arch: None,
+        });
+    }
 
     let ClassifiedState {
         relation,

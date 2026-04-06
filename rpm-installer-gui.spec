@@ -4,9 +4,9 @@
 %global app_id com.example.RpmInstallerGui
 
 Name:           rpm-installer-gui
-Version:        0.1.0
+Version:        0.1.2
 Release:        1%{?dist}
-Summary:        GTK4/libadwaita GUI installer for local RPM files via PackageKit
+Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        MIT
 URL:            https://example.com/rpm-installer-gui
 %if ! 0%{?_build_in_place}
@@ -27,7 +27,7 @@ Requires:       dnf5daemon-server
 %{summary}.
 
 The application accepts local .rpm files (paths or file:// URIs), reads package
-metadata, and installs or reinstalls packages using PackageKit transactions.
+metadata, and installs or reinstalls packages using dnf5daemon transactions.
 It integrates with desktop MIME handling so RPM files can be opened directly in
 the GUI.
 
@@ -89,6 +89,10 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
+* Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.2-1
+- Add colored install-state heading cues and uninstall action for installed packages
+- Keep metadata/path validation and error handling hardening from stabilization pass
+
 * Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.0-1
 - Initial Fedora package with COPR-friendly Source0 mode
 - Keep local build-in-place workflow via --define '_build_in_place 1'
