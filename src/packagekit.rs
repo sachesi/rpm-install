@@ -2,6 +2,7 @@ use anyhow::Context;
 use futures_util::StreamExt;
 use packagekit_zbus::package_kit::PackageKitProxy;
 use packagekit_zbus::transaction::TransactionProxy;
+use tracing::{info, warn};
 
 use crate::error::{AppError, AppResult};
 
@@ -20,6 +21,8 @@ pub enum InstallMode {
 pub async fn install_local_file<F>(
     file_path: &str,
     package_name: &str,
+    target_arch: &str,
+    target_evr: &str,
     mode: InstallMode,
     mut on_progress: F,
 ) -> AppResult<InstallMode>
@@ -38,23 +41,35 @@ where
         InstallMode::Downgrade => PK_FLAG_ALLOW_DOWNGRADE,
     };
 
+    let path_label = match mode {
+        InstallMode::Install => "install",
+        InstallMode::Reinstall => "reinstall-direct",
+        InstallMode::Downgrade => "downgrade",
+    };
+    info!("packagekit-path={path_label}");
+
     match run_install_transaction(&connection, file_path, flags, &mut on_progress).await {
         Ok(()) => return Ok(mode),
         Err(AppError::PackageKit { code, details }) if mode == InstallMode::Reinstall => {
             if !is_reinstall_capability_error(code, &details) {
                 return Err(AppError::PackageKit { code, details });
             }
+            warn!("Direct reinstall unsupported by backend, falling back to remove+install");
+        }
+        Err(AppError::PackageKit { code, details }) if mode == InstallMode::Downgrade => {
+            if is_downgrade_not_supported(code, &details) {
+                return Err(AppError::DowngradeNotSupported);
+            }
+            return Err(AppError::PackageKit { code, details });
         }
         Err(err) => return Err(err),
     }
 
-    let package_id = resolve_installed_package_id(&connection, package_name)
-        .await?
-        .ok_or_else(|| {
-            AppError::Other(anyhow::anyhow!(
-                "PackageKit backend did not provide direct reinstall and no installed package id could be resolved"
-            ))
-        })?;
+    info!("packagekit-path=reinstall-fallback");
+    let package_id =
+        resolve_installed_package_id(&connection, package_name, target_arch, target_evr)
+            .await?
+            .ok_or(AppError::ReinstallNotSupported)?;
 
     run_remove_transaction(&connection, &package_id).await?;
     run_install_transaction(&connection, file_path, PK_FLAG_NONE, &mut on_progress).await?;
@@ -196,6 +211,8 @@ async fn run_remove_transaction(connection: &zbus::Connection, package_id: &str)
 async fn resolve_installed_package_id(
     connection: &zbus::Connection,
     package_name: &str,
+    target_arch: &str,
+    target_evr: &str,
 ) -> AppResult<Option<String>> {
     let tx = create_transaction(connection).await?;
 
@@ -224,15 +241,15 @@ async fn resolve_installed_package_id(
         .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
-    let mut candidate: Option<String> = None;
+    let mut exact_match: Option<String> = None;
     loop {
         futures_util::select! {
             package = package_stream.next() => {
                 if let Some(signal) = package {
                     let args = signal.args().map_err(|e| AppError::Other(anyhow::Error::new(e).context("Invalid resolve package signal")))?;
-                    let package_id = args.package_id();
-                    if package_id.starts_with(&format!("{};", package_name)) {
-                        candidate = Some(package_id.to_string());
+                    let package_id = args.package_id().to_string();
+                    if is_exact_package_identity_match(&package_id, package_name, target_arch, target_evr) {
+                        exact_match = Some(package_id);
                     }
                 }
             }
@@ -251,7 +268,27 @@ async fn resolve_installed_package_id(
         }
     }
 
-    Ok(candidate)
+    Ok(exact_match)
+}
+
+fn is_exact_package_identity_match(
+    package_id: &str,
+    name: &str,
+    arch: &str,
+    target_evr: &str,
+) -> bool {
+    let mut parts = package_id.split(';');
+    let Some(pid_name) = parts.next() else {
+        return false;
+    };
+    let Some(pid_version) = parts.next() else {
+        return false;
+    };
+    let Some(pid_arch) = parts.next() else {
+        return false;
+    };
+
+    pid_name == name && pid_arch == arch && pid_version == target_evr
 }
 
 async fn create_transaction(connection: &zbus::Connection) -> AppResult<TransactionProxy<'_>> {
@@ -282,5 +319,13 @@ async fn create_transaction(connection: &zbus::Connection) -> AppResult<Transact
 
 fn is_reinstall_capability_error(code: u32, details: &str) -> bool {
     let detail_lc = details.to_lowercase();
-    code == 9 || detail_lc.contains("reinstall") || detail_lc.contains("already installed")
+    code == 9
+        || detail_lc.contains("reinstall")
+        || detail_lc.contains("already installed")
+        || detail_lc.contains("not supported")
+}
+
+fn is_downgrade_not_supported(code: u32, details: &str) -> bool {
+    let detail_lc = details.to_lowercase();
+    code == 9 || detail_lc.contains("downgrade") || detail_lc.contains("not supported")
 }

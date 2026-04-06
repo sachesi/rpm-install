@@ -20,6 +20,12 @@ pub enum AppError {
     #[error("Package installation was canceled")]
     InstallationCanceled,
 
+    #[error("Reinstall is not supported by the active PackageKit backend")]
+    ReinstallNotSupported,
+
+    #[error("Downgrade is not supported by the active PackageKit backend")]
+    DowngradeNotSupported,
+
     #[error("PackageKit reported an error ({code}): {details}")]
     PackageKit { code: u32, details: String },
 

@@ -4,9 +4,10 @@ use gtk::glib;
 use tracing::{error, info, warn};
 
 use crate::error::{AppError, AppResult};
-use crate::installed_state::{InstallRelation, detect_installed};
+use crate::installed_state::detect_installed;
 use crate::packagekit::{InstallMode, install_local_file};
 use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};
+use crate::state_logic::{ActionMode, action_for_relation};
 use crate::ui::Ui;
 
 const APP_ID: &str = "com.example.RpmInstallerGui";
@@ -80,13 +81,14 @@ fn build_main_window(
         ui.toast("Multiple files were provided; showing the first one.");
     }
 
-    let mode = match installed.relation {
-        InstallRelation::SameVersion => InstallMode::Reinstall,
-        InstallRelation::Downgrade => InstallMode::Downgrade,
-        InstallRelation::Upgrade | InstallRelation::NotInstalled => InstallMode::Install,
+    let action_mode = action_for_relation(&installed.relation);
+    let install_mode = match action_mode {
+        ActionMode::Install => InstallMode::Install,
+        ActionMode::Reinstall => InstallMode::Reinstall,
+        ActionMode::Downgrade => InstallMode::Downgrade,
     };
 
-    wire_install_action(&ui, info, mode);
+    wire_install_action(&ui, info, install_mode);
 
     Ok(())
 }
@@ -110,8 +112,8 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
             ),
             InstallMode::Downgrade => (
                 "Confirm downgrade",
-                "Install older version",
-                "A newer version is already installed. Continuing may downgrade the package and may require administrator authentication.",
+                "Downgrade",
+                "A newer version is already installed. Continue and downgrade to this version?",
             ),
         };
 
@@ -123,7 +125,7 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
         confirm.add_response("cancel", "Cancel");
         confirm.add_response("ok", action_label);
         confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
-        confirm.set_default_response(Some("ok"));
+        confirm.set_default_response(Some("cancel"));
         confirm.set_close_response("cancel");
 
         let ui_for_response = ui_cloned.clone();
@@ -145,11 +147,26 @@ fn wire_install_action(ui: &Ui, info: RpmInfo, mode: InstallMode) {
                 let ui_for_async = ui_for_response.clone();
                 let path = info_for_response.path.display().to_string();
                 let package_name = info_for_response.name.clone();
+                let target_arch = info_for_response.arch.clone();
+                let target_evr = format!(
+                    "{}:{}-{}",
+                    info_for_response.epoch.unwrap_or(0),
+                    info_for_response.version,
+                    info_for_response.release
+                );
+
                 glib::MainContext::default().spawn_local(async move {
                     let ui_for_progress = ui_for_async.clone();
-                    let result = install_local_file(&path, &package_name, mode, move |pct| {
-                        ui_for_progress.set_progress(pct);
-                    })
+                    let result = install_local_file(
+                        &path,
+                        &package_name,
+                        &target_arch,
+                        &target_evr,
+                        mode,
+                        move |pct| {
+                            ui_for_progress.set_progress(pct);
+                        },
+                    )
                     .await;
 
                     match result {
@@ -195,6 +212,12 @@ fn humanize_error(error: &AppError) -> String {
             "Please choose an RPM file, not a directory.".to_string()
         }
         AppError::InstallationCanceled => "Installation canceled.".to_string(),
+        AppError::ReinstallNotSupported => {
+            "This PackageKit backend does not support reinstall for local files.".to_string()
+        }
+        AppError::DowngradeNotSupported => {
+            "This PackageKit backend does not support downgrading this package.".to_string()
+        }
         AppError::PackageKit { details, .. } => format!("Installation failed: {details}"),
         other => other.to_string(),
     }

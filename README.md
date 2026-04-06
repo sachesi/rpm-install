@@ -7,11 +7,13 @@ A Linux-first desktop app in Rust for opening local `.rpm` files (including Naut
 - **Frontend:** `adw::Application` with GTK4/libadwaita widgets and a fixed-size non-resizable `adw::ApplicationWindow`.
 - **Open flow:** `gio::ApplicationFlags::HANDLES_OPEN` handles desktop-open and CLI file arguments.
 - **RPM metadata:** parsed directly from the local RPM file with the `rpm` crate for immediate display.
-- **Installed-state detection:** queries installed package EVR+arch and compares with local EVR using RPM version comparison semantics.
+- **Installed-state detection:** queries installed package EVR+arch and compares with local EVR using RPM version comparison semantics via a GTK-independent helper layer (`state_logic`) for unit-testable classification and action mapping.
 - **Install backend:** PackageKit D-Bus APIs (`CreateTransaction` + `InstallFiles`) via `packagekit-zbus`.
 - **Reinstall behavior:**
   - Primary path: `InstallFiles` with PackageKit transaction flags `ALLOW_REINSTALL | JUST_REINSTALL`.
-  - Native fallback path (when reinstall flags are not supported by the backend): resolve installed package id via PackageKit, remove through PackageKit `RemovePackages`, then install local file via PackageKit `InstallFiles`.
+  - Native fallback path (when reinstall flags are not supported by the backend): resolve installed package id via PackageKit and require exact name+arch+EVR match before removal, then `RemovePackages` + `InstallFiles`.
+  - If backend capabilities still do not permit reinstall, the UI shows a precise reinstall-not-supported message.
+- **Downgrade behavior:** uses `ALLOW_DOWNGRADE`; if unsupported by backend, UI shows a precise downgrade-not-supported message.
 
 ## Crates selected (latest compatible at implementation time)
 
@@ -53,7 +55,8 @@ A compact status line near the action area shows the detected installed build, e
 - `src/ui/mod.rs` – libadwaita UI composition/state helpers
 - `src/rpm_info.rs` – path validation and RPM metadata extraction
 - `src/packagekit.rs` – PackageKit D-Bus transaction logic
-- `src/installed_state.rs` – installed-state detection logic
+- `src/state_logic.rs` – GTK-independent installed-state classification and action mapping (+ unit tests)
+- `src/installed_state.rs` – RPM query adapter into `state_logic`
 - `src/error.rs` – typed error model
 - `assets/com.example.RpmInstallerGui.desktop` – desktop file
 - `assets/com.example.RpmInstallerGui.metainfo.xml` – AppStream metadata
