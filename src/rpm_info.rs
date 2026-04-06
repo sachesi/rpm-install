@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn accepts_regular_rpm_file() {
         let file_path =
-            std::env::temp_dir().join(format!("rpm-installer-gui-test-{}.rpm", std::process::id()));
+            std::env::temp_dir().join(format!("rpm-install-test-{}.rpm", std::process::id()));
         let _file = File::create(&file_path).expect("create temp rpm");
         let validated = validate_local_path(&file_path).expect("must accept rpm extension");
         assert!(validated.ends_with(file_path.file_name().expect("file name exists")));

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.example.RpmInstallerGui</id>
-  <name>RPM Installer GUI</name>
+  <id>com.example.RpmInstall</id>
+  <name>RPM Installer</name>
   <summary>Install local RPM files through dnf5daemon</summary>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
@@ -9,13 +9,13 @@
     <p>A small libadwaita desktop app that installs local RPM files from Nautilus using dnf5daemon authorization and transaction APIs.</p>
   </description>
   <releases>
-    <release version="0.1.2" date="2026-04-06">
+    <release version="0.3.4" date="2026-04-06">
       <description>
         <p>Added relation-colored status headings and an uninstall action for already-installed packages, with continued stability hardening.</p>
       </description>
     </release>
   </releases>
-  <launchable type="desktop-id">com.example.RpmInstallerGui.desktop</launchable>
+  <launchable type="desktop-id">com.example.RpmInstall.desktop</launchable>
   <provides>
     <mediatype>application/x-rpm</mediatype>
     <mediatype>application/vnd.rpm</mediatype>
@@ -24,5 +24,5 @@
     <category>System</category>
     <category>PackageManager</category>
   </categories>
-  <url type="homepage">https://example.com/rpm-installer-gui</url>
+  <url type="homepage">https://example.com/rpm-install</url>
 </component>
