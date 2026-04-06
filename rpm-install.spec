@@ -2,8 +2,6 @@
 %define debug_package %{nil}
 
 %global app_id com.github.sachesi.rpminstall
-%global legacy_app_id_1 com.example.RpmInstall
-%global legacy_app_id_2 com.example.RpmInstaller
 
 Name:           rpm-install
 Version:        0.3.4
@@ -62,17 +60,11 @@ install -Dm755 target/release/rpm-install %{buildroot}%{_bindir}/rpm-install
 
 install -Dm644 assets/%{app_id}.desktop \
     %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-install -Dm644 assets/%{legacy_app_id_1}.desktop \
-    %{buildroot}%{_datadir}/applications/%{legacy_app_id_1}.desktop
-install -Dm644 assets/%{legacy_app_id_2}.desktop \
-    %{buildroot}%{_datadir}/applications/%{legacy_app_id_2}.desktop
 install -Dm644 assets/%{app_id}.metainfo.xml \
     %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-desktop-file-validate %{buildroot}%{_datadir}/applications/%{legacy_app_id_1}.desktop
-desktop-file-validate %{buildroot}%{_datadir}/applications/%{legacy_app_id_2}.desktop
 if command -v appstream-util >/dev/null 2>&1; then
     appstream-util validate-relax --nonet \
         %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
@@ -94,8 +86,6 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 %doc README.md
 %{_bindir}/rpm-install
 %{_datadir}/applications/%{app_id}.desktop
-%{_datadir}/applications/%{legacy_app_id_1}.desktop
-%{_datadir}/applications/%{legacy_app_id_2}.desktop
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
