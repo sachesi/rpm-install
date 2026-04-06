@@ -206,7 +206,7 @@ impl Ui {
         path_label.set_ellipsize(pango::EllipsizeMode::Middle);
         path_label.set_margin_top(4);
 
-        let hero_box = gtk::Box::builder()
+        let hero_content = gtk::Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
             .margin_start(CARD_PADDING)
@@ -214,10 +214,15 @@ impl Ui {
             .margin_top(CARD_PADDING)
             .margin_bottom(CARD_PADDING)
             .build();
+        hero_content.append(&package_name_label);
+        hero_content.append(&version_label);
+        hero_content.append(&path_label);
+
+        let hero_box = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .build();
         hero_box.add_css_class("card");
-        hero_box.append(&package_name_label);
-        hero_box.append(&version_label);
-        hero_box.append(&path_label);
+        hero_box.append(&hero_content);
 
         let state_title_label = gtk::Label::builder()
             .halign(Align::Start)
@@ -233,7 +238,7 @@ impl Ui {
             .build();
         context_label.set_margin_top(4);
 
-        let state_box = gtk::Box::builder()
+        let state_content = gtk::Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(6)
             .margin_start(CARD_PADDING)
@@ -241,10 +246,15 @@ impl Ui {
             .margin_top(CARD_PADDING)
             .margin_bottom(CARD_PADDING)
             .build();
+        state_content.append(&state_title_label);
+        state_content.append(&state_subtitle_label);
+        state_content.append(&context_label);
+
+        let state_box = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .build();
         state_box.add_css_class("card");
-        state_box.append(&state_title_label);
-        state_box.append(&state_subtitle_label);
-        state_box.append(&context_label);
+        state_box.append(&state_content);
 
         let details_chevron = gtk::Image::from_icon_name("pan-end-symbolic");
         let details_title = gtk::Label::builder()
