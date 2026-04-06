@@ -4,7 +4,7 @@
 %global app_id com.example.RpmInstallerGui
 
 Name:           rpm-installer-gui
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        MIT
@@ -89,9 +89,9 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
-* Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.1-1
-- Stabilization release: improved state handling, error messages, and metadata safety bounds
-- Align app metadata/docs/spec text with dnf5daemon backend
+* Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.2-1
+- Add colored install-state heading cues and uninstall action for installed packages
+- Keep metadata/path validation and error handling hardening from stabilization pass
 
 * Mon Apr 06 2026 rpm-installer-gui packager <packager@example.com> - 0.1.0-1
 - Initial Fedora package with COPR-friendly Source0 mode

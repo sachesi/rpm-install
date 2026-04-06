@@ -20,7 +20,7 @@ const RESOLVE_OK: u32 = 0;
 const RESOLVE_WARNINGS: u32 = 1;
 
 pub async fn run_local_rpm_transaction<F>(
-    rpm_path: &str,
+    spec: &str,
     operation: BackendOperation,
     mut on_progress: F,
 ) -> AppResult<BackendOperation>
@@ -36,7 +36,7 @@ where
     let op_result = run_in_session(
         &connection,
         &session_path,
-        rpm_path,
+        spec,
         operation,
         &mut on_progress,
     )
@@ -55,7 +55,7 @@ where
 async fn run_in_session<F>(
     connection: &Connection,
     session_path: &OwnedObjectPath,
-    rpm_path: &str,
+    spec: &str,
     operation: BackendOperation,
     on_progress: &mut F,
 ) -> AppResult<()>
@@ -66,7 +66,7 @@ where
     let goal = proxy(connection, session_path.as_str(), IFACE_GOAL).await?;
     let base = proxy(connection, session_path.as_str(), IFACE_BASE).await?;
 
-    let specs = vec![rpm_path.to_string()];
+    let specs = vec![spec.to_string()];
     let empty_options = HashMap::<String, Value<'_>>::new();
 
     call_rpm_op(&rpm, operation, &(specs, empty_options)).await?;
@@ -192,6 +192,7 @@ async fn call_rpm_op(
         BackendOperation::Reinstall => "reinstall",
         BackendOperation::Upgrade => "upgrade",
         BackendOperation::Downgrade => "downgrade",
+        BackendOperation::Remove => "remove",
     };
 
     rpm.call_method(method, payload)

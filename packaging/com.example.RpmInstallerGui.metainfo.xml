@@ -9,9 +9,9 @@
     <p>A small libadwaita desktop app that installs local RPM files from Nautilus using dnf5daemon authorization and transaction APIs.</p>
   </description>
   <releases>
-    <release version="0.1.1" date="2026-04-06">
+    <release version="0.1.2" date="2026-04-06">
       <description>
-        <p>Stabilization update with stronger path validation, cleaner state mapping, and release metadata alignment.</p>
+        <p>Added relation-colored status headings and an uninstall action for already-installed packages, with continued stability hardening.</p>
       </description>
     </release>
   </releases>
