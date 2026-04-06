@@ -1,0 +1,29 @@
+[package]
+name = "rpm-installer-gui"
+version = "0.1.0"
+edition = "2024"
+description = "GTK4/libadwaita GUI installer for local RPM files via PackageKit"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0.102"
+thiserror = "2.0.18"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+
+# GNOME stack
+adw = { package = "libadwaita", version = "0.9.1", features = ["v1_6"] }
+gtk = { package = "gtk4", version = "0.11.2", features = ["v4_12"] }
+gio = "0.22.4"
+glib = "0.22.4"
+
+# Backend
+rpm = "0.19.0"
+packagekit-zbus = "0.2.0"
+zbus = "5.14.0"
+futures-util = "0.3.31"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
