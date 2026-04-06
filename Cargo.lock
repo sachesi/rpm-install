@@ -1918,15 +1918,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "packagekit-zbus"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c68e70a6f481d7df68d5463a3cf5185d667cca7125e3f8db7b74253c9e7e62"
-dependencies = [
- "zbus",
-]
-
-[[package]]
 name = "pango"
 version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2314,12 +2305,12 @@ dependencies = [
  "glib",
  "gtk4",
  "libadwaita",
- "packagekit-zbus",
  "rpm",
  "thiserror",
  "tracing",
  "tracing-subscriber",
  "zbus",
+ "zvariant",
 ]
 
 [[package]]

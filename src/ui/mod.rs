@@ -1,28 +1,156 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::HashMap;
 
 use adw::prelude::*;
 use gtk::pango;
 use gtk::{Align, Orientation};
 
+use crate::backend::types::BackendOperation;
 use crate::installed_state::InstalledState;
 use crate::rpm_info::{RpmInfo, format_size};
-use crate::state_logic::InstallRelation;
+use crate::state_logic::{ActionMode, InstallRelation};
+
+const HERO_PATH_MAX_CHARS: usize = 68;
 
 #[derive(Clone)]
 pub struct Ui {
     pub window: adw::ApplicationWindow,
-    pub title_label: gtk::Label,
+    pub package_name_label: gtk::Label,
     pub subtitle_label: gtk::Label,
-    pub status_label: gtk::Label,
-    pub installed_context_label: gtk::Label,
-    pub install_button: gtk::Button,
+    pub path_label: gtk::Label,
+    pub state_row: adw::ActionRow,
+    pub context_label: gtk::Label,
+    pub status_revealer: gtk::Revealer,
+    pub status_icon: gtk::Image,
+    pub status_title_label: gtk::Label,
+    pub status_body_label: gtk::Label,
+    pub progress_revealer: gtk::Revealer,
     pub spinner: gtk::Spinner,
     pub progress: gtk::ProgressBar,
-    pub error_revealer: gtk::Revealer,
-    pub error_label: gtk::Label,
+    pub action_button: gtk::Button,
     pub toast_overlay: adw::ToastOverlay,
-    pub detail_rows: Rc<RefCell<Vec<adw::ActionRow>>>,
+    detail_rows: Vec<DetailRowBinding>,
+    details_expander: adw::ExpanderRow,
+}
+
+#[derive(Clone)]
+struct DetailRowBinding {
+    key: DetailKey,
+    row: adw::ActionRow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+enum DetailKey {
+    Summary,
+    Description,
+    License,
+    Vendor,
+    Packager,
+    Homepage,
+    InstalledSize,
+    PackageSize,
+    SourceRpm,
+    Signature,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PackageViewModel {
+    package_name: String,
+    subtitle: String,
+    path: String,
+    state_title: String,
+    state_subtitle: String,
+    installed_context: String,
+    action_label: String,
+    details: HashMap<DetailKey, String>,
+}
+
+impl PackageViewModel {
+    fn from_inputs(info: &RpmInfo, installed: &InstalledState, action_mode: ActionMode) -> Self {
+        let state_title = match installed.relation {
+            InstallRelation::NotInstalled => "Not installed",
+            InstallRelation::SameVersion => "Same version installed",
+            InstallRelation::Upgrade => "Upgrade available",
+            InstallRelation::Downgrade => "Downgrade warning",
+        }
+        .to_string();
+
+        let state_subtitle = match installed.relation {
+            InstallRelation::NotInstalled => "This package is not currently installed.",
+            InstallRelation::SameVersion => {
+                "This exact build is installed; reinstall is available."
+            }
+            InstallRelation::Upgrade => {
+                "An older installed version was found. Installing this RPM upgrades it."
+            }
+            InstallRelation::Downgrade => {
+                "A newer installed version was found. Installing this RPM downgrades it."
+            }
+        }
+        .to_string();
+
+        let installed_context = installed
+            .installed_evr_arch
+            .as_ref()
+            .map(|v| format!("Installed: {v}"))
+            .unwrap_or_else(|| "Installed: not present".to_string());
+
+        let action_label = match action_mode {
+            ActionMode::Install | ActionMode::Downgrade => BackendOperation::Install.label(),
+            ActionMode::Reinstall => BackendOperation::Reinstall.label(),
+        }
+        .to_string();
+
+        let mut details = HashMap::new();
+        insert_if_text(&mut details, DetailKey::Summary, info.summary.as_deref());
+        insert_if_text(
+            &mut details,
+            DetailKey::Description,
+            info.description.as_deref(),
+        );
+        insert_if_text(&mut details, DetailKey::License, info.license.as_deref());
+        insert_if_text(&mut details, DetailKey::Vendor, info.vendor.as_deref());
+        insert_if_text(&mut details, DetailKey::Packager, info.packager.as_deref());
+        insert_if_text(&mut details, DetailKey::Homepage, info.url.as_deref());
+        insert_if_u64(
+            &mut details,
+            DetailKey::InstalledSize,
+            info.installed_size,
+            format_size,
+        );
+        insert_if_u64(
+            &mut details,
+            DetailKey::PackageSize,
+            info.package_size,
+            format_size,
+        );
+        insert_if_text(
+            &mut details,
+            DetailKey::SourceRpm,
+            info.source_rpm.as_deref(),
+        );
+        insert_if_text(
+            &mut details,
+            DetailKey::Signature,
+            info.signature_status.as_deref(),
+        );
+
+        Self {
+            package_name: info.name.clone(),
+            subtitle: format!(
+                "{}{}-{} · {}",
+                info.epoch.map(|e| format!("{e}:")).unwrap_or_default(),
+                info.version,
+                info.release,
+                info.arch
+            ),
+            path: shorten_middle(&info.path.display().to_string(), HERO_PATH_MAX_CHARS),
+            state_title,
+            state_subtitle,
+            installed_context,
+            action_label,
+            details,
+        }
+    }
 }
 
 impl Ui {
@@ -30,287 +158,389 @@ impl Ui {
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("RPM Installer")
-            .default_width(620)
-            .default_height(560)
+            .default_width(560)
+            .default_height(600)
             .resizable(false)
             .build();
-        window.set_size_request(620, 560);
+        window.set_size_request(560, 600);
 
         let header = adw::HeaderBar::builder()
-            .title_widget(&gtk::Label::builder().label("Local RPM Installer").build())
+            .show_end_title_buttons(true)
             .build();
+        let header_title = adw::WindowTitle::builder()
+            .title("Local RPM Installer")
+            .subtitle("Fedora")
+            .build();
+        header.set_title_widget(Some(&header_title));
 
-        let title_label = gtk::Label::builder()
+        let package_name_label = gtk::Label::builder()
             .halign(Align::Start)
             .wrap(true)
-            .css_classes(["title-2"])
+            .css_classes(["title-1"])
             .build();
-
         let subtitle_label = gtk::Label::builder()
             .halign(Align::Start)
             .wrap(true)
             .css_classes(["dim-label"])
             .build();
-
-        let status_label = gtk::Label::builder()
+        let path_label = gtk::Label::builder()
             .halign(Align::Start)
-            .wrap(true)
-            .build();
-
-        let installed_context_label = gtk::Label::builder()
-            .halign(Align::Start)
-            .wrap(true)
+            .xalign(0.0)
+            .wrap(false)
+            .ellipsize(pango::EllipsizeMode::Middle)
             .css_classes(["caption", "dim-label"])
             .build();
 
-        let spinner = gtk::Spinner::builder()
-            .halign(Align::Start)
-            .spinning(false)
-            .build();
-        let progress = gtk::ProgressBar::builder()
-            .hexpand(true)
-            .show_text(true)
-            .build();
-        progress.set_fraction(0.0);
-        progress.set_text(Some("Idle"));
-
-        let install_button = gtk::Button::builder()
-            .label("Install")
-            .css_classes(["suggested-action"])
-            .halign(Align::End)
-            .build();
-
-        let error_label = gtk::Label::builder().wrap(true).xalign(0.0).build();
-        let error_box = gtk::Box::builder()
-            .orientation(Orientation::Horizontal)
-            .spacing(8)
-            .css_classes(["error"])
-            .margin_top(6)
-            .margin_bottom(6)
-            .margin_start(6)
-            .margin_end(6)
-            .build();
-        error_box.append(&gtk::Image::from_icon_name("dialog-error-symbolic"));
-        error_box.append(&error_label);
-
-        let error_revealer = gtk::Revealer::builder().reveal_child(false).build();
-        error_revealer.set_child(Some(&error_box));
-
-        let details_group = adw::PreferencesGroup::builder()
-            .title("Package details")
-            .build();
-
-        let detail_rows = Rc::new(RefCell::new(Vec::<adw::ActionRow>::new()));
-        let add_row = |group: &adw::PreferencesGroup,
-                       rows: &Rc<RefCell<Vec<adw::ActionRow>>>,
-                       title: &str,
-                       value: String| {
-            let subtitle = gtk::Label::builder()
-                .label(value)
-                .wrap(true)
-                .wrap_mode(pango::WrapMode::WordChar)
-                .xalign(0.0)
-                .selectable(true)
-                .build();
-            subtitle.set_max_width_chars(60);
-            subtitle.set_ellipsize(pango::EllipsizeMode::End);
-
-            let row = adw::ActionRow::builder().title(title).build();
-            row.add_suffix(&subtitle);
-            row.set_activatable(false);
-            rows.borrow_mut().push(row.clone());
-            group.add(&row);
-        };
-
-        add_row(&details_group, &detail_rows, "Name", String::new());
-        add_row(&details_group, &detail_rows, "Version", String::new());
-        add_row(&details_group, &detail_rows, "Architecture", String::new());
-        add_row(&details_group, &detail_rows, "Summary", String::new());
-        add_row(&details_group, &detail_rows, "Description", String::new());
-        add_row(&details_group, &detail_rows, "License", String::new());
-        add_row(&details_group, &detail_rows, "Vendor", String::new());
-        add_row(&details_group, &detail_rows, "Packager", String::new());
-        add_row(&details_group, &detail_rows, "Homepage", String::new());
-        add_row(
-            &details_group,
-            &detail_rows,
-            "Installed size",
-            String::new(),
-        );
-        add_row(&details_group, &detail_rows, "Package size", String::new());
-        add_row(&details_group, &detail_rows, "Source RPM", String::new());
-        add_row(&details_group, &detail_rows, "Path", String::new());
-        add_row(&details_group, &detail_rows, "Signature", String::new());
-
-        let expander = adw::ExpanderRow::builder()
-            .title("Metadata")
-            .subtitle("Expand for full package metadata")
-            .build();
-        expander.add_row(&details_group);
-        let expander_group = adw::PreferencesGroup::new();
-        expander_group.add(&expander);
-
-        let actions_box = gtk::Box::builder()
-            .orientation(Orientation::Horizontal)
-            .spacing(12)
-            .halign(Align::Fill)
-            .build();
-        actions_box.append(&spinner);
-        actions_box.append(&progress);
-        actions_box.append(&install_button);
-
-        let content = gtk::Box::builder()
+        let hero_block = gtk::Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(12)
+            .spacing(6)
             .margin_top(12)
             .margin_bottom(12)
             .margin_start(12)
             .margin_end(12)
             .build();
-        content.append(&title_label);
-        content.append(&subtitle_label);
-        content.append(&status_label);
-        content.append(&installed_context_label);
-        content.append(&error_revealer);
-        content.append(&expander_group);
-        content.append(&actions_box);
+        hero_block.add_css_class("card");
+        hero_block.append(&package_name_label);
+        hero_block.append(&subtitle_label);
+        hero_block.append(&path_label);
 
-        let scroll = gtk::ScrolledWindow::builder()
-            .vexpand(true)
-            .hexpand(true)
-            .min_content_height(420)
+        let state_row = adw::ActionRow::builder().build();
+        let context_label = gtk::Label::builder()
+            .xalign(1.0)
+            .wrap(true)
+            .css_classes(["caption", "dim-label"])
+            .build();
+        state_row.add_suffix(&context_label);
+        state_row.set_activatable(false);
+
+        let state_group = adw::PreferencesGroup::builder()
+            .title("Installed state")
+            .build();
+        state_group.add(&state_row);
+
+        let details_expander = adw::ExpanderRow::builder()
+            .title("Package details")
+            .subtitle("No additional metadata")
+            .build();
+
+        let detail_rows = make_detail_rows(&details_expander);
+
+        let details_group = adw::PreferencesGroup::builder().title("Details").build();
+        details_group.add(&details_expander);
+
+        let content = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(10)
+            .margin_top(10)
+            .margin_bottom(10)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        content.append(&hero_block);
+        content.append(&state_group);
+        content.append(&details_group);
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(520)
+            .tightening_threshold(380)
             .child(&content)
             .build();
 
-        let main_box = gtk::Box::builder()
-            .orientation(Orientation::Vertical)
+        let status_icon = gtk::Image::from_icon_name("dialog-information-symbolic");
+        let status_title_label = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["heading"])
             .build();
-        main_box.append(&header);
-        main_box.append(&scroll);
+        let status_body_label = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["dim-label"])
+            .build();
+        let status_text = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(2)
+            .build();
+        status_text.append(&status_title_label);
+        status_text.append(&status_body_label);
+
+        let status_box = gtk::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(8)
+            .margin_top(6)
+            .margin_bottom(2)
+            .build();
+        status_box.append(&status_icon);
+        status_box.append(&status_text);
+
+        let status_revealer = gtk::Revealer::builder().reveal_child(false).build();
+        status_revealer.set_child(Some(&status_box));
+
+        let spinner = gtk::Spinner::builder().spinning(false).build();
+        let progress = gtk::ProgressBar::builder()
+            .hexpand(true)
+            .show_text(true)
+            .build();
+        let progress_box = gtk::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(10)
+            .margin_top(6)
+            .build();
+        progress_box.append(&spinner);
+        progress_box.append(&progress);
+        let progress_revealer = gtk::Revealer::builder().reveal_child(false).build();
+        progress_revealer.set_child(Some(&progress_box));
+
+        let action_button = gtk::Button::builder()
+            .label("Install")
+            .css_classes(["suggested-action"])
+            .halign(Align::End)
+            .build();
+
+        let footer_box = gtk::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(4)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(8)
+            .margin_bottom(10)
+            .build();
+        footer_box.append(&progress_revealer);
+        footer_box.append(&status_revealer);
+        footer_box.append(&action_button);
+
+        let toolbar_view = adw::ToolbarView::new();
+        toolbar_view.add_top_bar(&header);
+        toolbar_view.set_content(Some(&clamp));
+        toolbar_view.add_bottom_bar(&footer_box);
 
         let toast_overlay = adw::ToastOverlay::new();
-        toast_overlay.set_child(Some(&main_box));
+        toast_overlay.set_child(Some(&toolbar_view));
         window.set_content(Some(&toast_overlay));
 
         Self {
             window,
-            title_label,
+            package_name_label,
             subtitle_label,
-            status_label,
-            installed_context_label,
-            install_button,
+            path_label,
+            state_row,
+            context_label,
+            status_revealer,
+            status_icon,
+            status_title_label,
+            status_body_label,
+            progress_revealer,
             spinner,
             progress,
-            error_revealer,
-            error_label,
+            action_button,
             toast_overlay,
             detail_rows,
+            details_expander,
         }
     }
 
-    pub fn bind_package(&self, info: &RpmInfo, installed: &InstalledState) {
-        self.title_label
-            .set_label(&format!("{} {}", info.name, info.version));
-        self.subtitle_label
-            .set_label(&format!("{} • {}", info.path.display(), info.arch));
+    pub fn bind_package(
+        &self,
+        info: &RpmInfo,
+        installed: &InstalledState,
+        action_mode: ActionMode,
+    ) {
+        let model = PackageViewModel::from_inputs(info, installed, action_mode);
 
-        match installed.relation {
-            InstallRelation::NotInstalled => {
-                self.install_button.set_label("Install");
-                self.status_label
-                    .set_label("This package is not currently installed.");
-            }
-            InstallRelation::SameVersion => {
-                self.install_button.set_label("Reinstall");
-                self.status_label
-                    .set_label("This exact package build is already installed.");
-            }
-            InstallRelation::Upgrade => {
-                self.install_button.set_label("Install");
-                self.status_label
-                    .set_label("An older installed version was detected; this will update it.");
-            }
-            InstallRelation::Downgrade => {
-                self.install_button.set_label("Install");
-                self.status_label
-                    .set_label("A newer installed version exists; this install may downgrade it.");
+        self.package_name_label.set_label(&model.package_name);
+        self.subtitle_label.set_label(&model.subtitle);
+        self.path_label.set_label(&model.path);
+
+        self.state_row.set_title(&model.state_title);
+        self.state_row.set_subtitle(&model.state_subtitle);
+        self.context_label.set_label(&model.installed_context);
+        self.action_button.set_label(&model.action_label);
+
+        let mut shown = 0usize;
+        for binding in &self.detail_rows {
+            if let Some(value) = model.details.get(&binding.key) {
+                binding.row.set_subtitle(value);
+                binding.row.set_visible(true);
+                shown += 1;
+            } else {
+                binding.row.set_subtitle("");
+                binding.row.set_visible(false);
             }
         }
 
-        self.installed_context_label.set_label(
-            &installed
-                .installed_evr_arch
-                .as_ref()
-                .map(|v| format!("Installed: {v}"))
-                .unwrap_or_else(|| "Installed: not present".to_string()),
-        );
-
-        let rows = self.detail_rows.borrow();
-        let values = vec![
-            info.name.clone(),
-            format!(
-                "{}{}-{}",
-                info.epoch.map(|e| format!("{e}:")).unwrap_or_default(),
-                info.version,
-                info.release
-            ),
-            info.arch.clone(),
-            info.summary.clone().unwrap_or_else(|| "—".to_string()),
-            info.description.clone().unwrap_or_else(|| "—".to_string()),
-            info.license.clone().unwrap_or_else(|| "—".to_string()),
-            info.vendor.clone().unwrap_or_else(|| "—".to_string()),
-            info.packager.clone().unwrap_or_else(|| "—".to_string()),
-            info.url.clone().unwrap_or_else(|| "—".to_string()),
-            format_size(info.installed_size),
-            format_size(info.package_size),
-            info.source_rpm.clone().unwrap_or_else(|| "—".to_string()),
-            info.path.display().to_string(),
-            info.signature_status
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_string()),
-        ];
-
-        for (idx, row) in rows.iter().enumerate() {
-            if let Some(suffix) = row.last_child().and_downcast::<gtk::Label>() {
-                suffix.set_label(values.get(idx).map(String::as_str).unwrap_or("—"));
-            }
-        }
+        self.details_expander.set_subtitle(match shown {
+            0 => "No additional metadata",
+            1 => "1 metadata field",
+            _ => "Metadata fields available",
+        });
     }
 
-    pub fn set_busy(&self, busy: bool) {
-        self.install_button.set_sensitive(!busy);
-        self.spinner.set_spinning(busy);
-        if busy {
+    pub fn set_running(&self, running: bool) {
+        self.action_button.set_sensitive(!running);
+        self.progress_revealer.set_reveal_child(running);
+        self.spinner.set_spinning(running);
+        if running {
+            self.progress.set_fraction(0.0);
             self.progress.set_text(Some("Working…"));
-            self.progress.pulse();
+        } else {
+            self.progress.set_fraction(0.0);
+            self.progress.set_text(None);
         }
     }
 
-    pub fn set_progress(&self, pct: u32) {
-        let fraction = (pct.min(100) as f64) / 100.0;
-        self.progress.set_fraction(fraction);
-        self.progress.set_text(Some(&format!("{pct}%")));
+    pub fn set_progress(&self, progress_percent: Option<u32>) {
+        if let Some(pct) = progress_percent {
+            self.progress.set_fraction((pct.min(100) as f64) / 100.0);
+            self.progress.set_text(Some(&format!("{pct}%")));
+        } else {
+            self.progress.pulse();
+            self.progress.set_text(Some("Working…"));
+        }
     }
 
-    pub fn show_canceled(&self, message: &str) {
-        self.hide_error();
-        self.status_label.set_label(message);
-        self.set_busy(false);
-        self.toast(message);
+    pub fn show_status(&self, icon: &str, title: &str, body: &str, css: Option<&str>) {
+        self.status_icon.set_icon_name(Some(icon));
+        self.status_title_label.set_label(title);
+        self.status_body_label.set_label(body);
+        self.status_title_label.remove_css_class("error");
+        self.status_title_label.remove_css_class("success");
+        if let Some(class_name) = css {
+            self.status_title_label.add_css_class(class_name);
+        }
+        self.status_revealer.set_reveal_child(true);
     }
 
-    pub fn show_error(&self, message: &str) {
-        self.error_label.set_label(message);
-        self.error_revealer.set_reveal_child(true);
-        self.status_label.set_label("Installation failed.");
-        self.set_busy(false);
-    }
-
-    pub fn hide_error(&self) {
-        self.error_revealer.set_reveal_child(false);
+    pub fn hide_status(&self) {
+        self.status_revealer.set_reveal_child(false);
     }
 
     pub fn toast(&self, message: &str) {
         self.toast_overlay.add_toast(adw::Toast::new(message));
+    }
+}
+
+fn make_detail_rows(expander: &adw::ExpanderRow) -> Vec<DetailRowBinding> {
+    let mut rows = Vec::new();
+
+    for (title, key) in [
+        ("Summary", DetailKey::Summary),
+        ("Description", DetailKey::Description),
+        ("License", DetailKey::License),
+        ("Vendor", DetailKey::Vendor),
+        ("Packager", DetailKey::Packager),
+        ("Homepage", DetailKey::Homepage),
+        ("Installed size", DetailKey::InstalledSize),
+        ("Package size", DetailKey::PackageSize),
+        ("Source RPM", DetailKey::SourceRpm),
+        ("Signature", DetailKey::Signature),
+    ] {
+        let row = adw::ActionRow::builder().title(title).build();
+        row.set_activatable(false);
+        row.set_visible(false);
+        expander.add_row(&row);
+        rows.push(DetailRowBinding { key, row });
+    }
+
+    rows
+}
+
+fn shorten_middle(input: &str, max_len: usize) -> String {
+    if input.chars().count() <= max_len || max_len <= 5 {
+        return input.to_string();
+    }
+
+    let keep = (max_len - 1) / 2;
+    let start = input.chars().take(keep).collect::<String>();
+    let end = input
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+
+    format!("{start}…{end}")
+}
+
+fn insert_if_text(map: &mut HashMap<DetailKey, String>, key: DetailKey, value: Option<&str>) {
+    if let Some(text) = value.map(str::trim).filter(|v| !v.is_empty()) {
+        map.insert(key, text.to_string());
+    }
+}
+
+fn insert_if_u64<F>(
+    map: &mut HashMap<DetailKey, String>,
+    key: DetailKey,
+    value: Option<u64>,
+    formatter: F,
+) where
+    F: Fn(Option<u64>) -> String,
+{
+    if let Some(v) = value {
+        map.insert(key, formatter(Some(v)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn shortens_middle_path_for_hero_label() {
+        let long =
+            "/very/long/path/to/some/rpm/files/build-output/package-name-1.2.3-1.fc42.x86_64.rpm";
+        let short = shorten_middle(long, 32);
+        assert!(short.contains('…'));
+        assert!(short.len() <= 33);
+    }
+
+    #[test]
+    fn metadata_model_skips_empty_fields() {
+        let info = RpmInfo {
+            path: PathBuf::from("/tmp/test.rpm"),
+            name: "testpkg".to_string(),
+            epoch: None,
+            version: "1.2.3".to_string(),
+            release: "1.fc42".to_string(),
+            arch: "x86_64".to_string(),
+            summary: Some("".to_string()),
+            description: Some("Useful package".to_string()),
+            license: None,
+            vendor: None,
+            packager: None,
+            url: Some("https://example.org".to_string()),
+            installed_size: None,
+            package_size: Some(1024),
+            source_rpm: None,
+            signature_status: Some("Signed".to_string()),
+        };
+
+        let installed = InstalledState {
+            relation: InstallRelation::NotInstalled,
+            installed_evr_arch: None,
+        };
+
+        let model = PackageViewModel::from_inputs(&info, &installed, ActionMode::Install);
+
+        assert!(!model.details.contains_key(&DetailKey::Summary));
+        assert!(!model.details.contains_key(&DetailKey::InstalledSize));
+        assert_eq!(
+            model
+                .details
+                .get(&DetailKey::Description)
+                .map(String::as_str),
+            Some("Useful package")
+        );
+        assert_eq!(
+            model.details.get(&DetailKey::Homepage).map(String::as_str),
+            Some("https://example.org")
+        );
+        assert_eq!(
+            model.details.get(&DetailKey::Signature).map(String::as_str),
+            Some("Signed")
+        );
     }
 }

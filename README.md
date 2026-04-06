@@ -1,65 +1,62 @@
-# RPM Installer GUI (GTK4 + libadwaita + PackageKit)
+# RPM Installer GUI (GTK4 + libadwaita + dnf5daemon)
 
-A Linux-first desktop app in Rust for opening local `.rpm` files (including Nautilus `%f` handlers), showing metadata, and installing/reinstalling through PackageKit.
+Fedora-specific desktop app in Rust for opening a local `.rpm`, showing clean package metadata, and running install/reinstall/upgrade/downgrade via `dnf5daemon` over D-Bus.
 
-## Architecture summary
+## Fedora scope
 
-- **Frontend:** `adw::Application` with GTK4/libadwaita widgets and a fixed-size non-resizable `adw::ApplicationWindow`.
-- **Open flow:** `gio::ApplicationFlags::HANDLES_OPEN` handles desktop-open and CLI file arguments.
-- **RPM metadata:** parsed directly from the local RPM file with the `rpm` crate for immediate display.
-- **Installed-state detection:** queries installed package EVR+arch and compares with local EVR using RPM version comparison semantics via a GTK-independent helper layer (`state_logic`) for unit-testable classification and action mapping.
-- **Install backend:** PackageKit D-Bus APIs (`CreateTransaction` + `InstallFiles`) via `packagekit-zbus`.
-- **Reinstall behavior:**
-  - Primary path: `InstallFiles` with PackageKit transaction flags `ALLOW_REINSTALL | JUST_REINSTALL`.
-  - Native fallback path (when reinstall flags are not supported by the backend): resolve installed package id via PackageKit and require exact name+arch+EVR match before removal, then `RemovePackages` + `InstallFiles`.
-  - If backend capabilities still do not permit reinstall, the UI shows a precise reinstall-not-supported message.
-- **Downgrade behavior:** uses `ALLOW_DOWNGRADE`; if unsupported by backend, UI shows a precise downgrade-not-supported message.
+This project is intentionally Fedora-specific:
 
-## Crates selected (latest compatible at implementation time)
+- Backend API target: `org.rpm.dnf.v0` (`dnf5daemon`) on system D-Bus.
+- UI toolkit target: GNOME GTK4 + libadwaita.
+- Installed-state logic: RPM EVR semantics and architecture awareness.
 
-- `gtk4 = 0.11.2`
-- `libadwaita = 0.9.1` (renamed as `adw`)
-- `gio = 0.22.4`
-- `glib = 0.22.4`
-- `zbus = 5.14.0`
-- `packagekit-zbus = 0.2.0`
-- `rpm = 0.19.0`
-- `anyhow = 1.0.102`
-- `thiserror = 2.0.18`
-- `tracing = 0.1.44`
-- `tracing-subscriber = 0.3.23`
+## Why dnf5daemon (and not PackageKit)
 
-## Fedora/GNOME compatibility assumptions
+The app now uses Fedora-native `dnf5daemon` D-Bus APIs instead of PackageKit.
 
-- Fedora-like system with:
-  - `packagekitd` running on system D-Bus
-  - PolicyKit agent available for admin authentication prompt
-  - GNOME/GTK4/libadwaita runtime and dev packages installed
-- Intended for local files only (`/path/*.rpm` and `file://` URIs that resolve to local/native files).
+Benefits:
 
-## Installed-state categories
+- Uses explicit dnf5 transaction operations (`install`, `reinstall`, `upgrade`, `downgrade`).
+- Clearer error handling categories for daemon/auth/cancel/unsupported/failure.
+- Session-based transaction flow (`open_session` → mark operation → `resolve` → `do_transaction` → `close_session`).
 
-The app distinguishes these states using EVR + arch comparison:
+## Runtime requirements
 
-- **Not installed** → primary action: `Install`
-- **Installed same build** → primary action: `Reinstall`
-- **Installed older version** → primary action: `Install` (update behavior)
-- **Installed newer version** → primary action: `Install` with explicit downgrade warning
+- Fedora with `dnf5daemon` server installed.
+- System D-Bus available.
+- Polkit agent available for authentication prompts.
+- GTK4/libadwaita runtime.
 
-A compact status line near the action area shows the detected installed build, e.g. `Installed: 1:1.2.3-1.fc44.x86_64`.
+### Service behavior
 
-## Project layout
+`dnf5daemon` is treated as D-Bus activation-based. The app does **not** require or instruct `systemctl enable dnf5daemon-server.service`.
 
-- `src/main.rs` – bootstrap + tracing
-- `src/app.rs` – application wiring, file-open handling, install workflow
-- `src/ui/mod.rs` – libadwaita UI composition/state helpers
-- `src/rpm_info.rs` – path validation and RPM metadata extraction
-- `src/packagekit.rs` – PackageKit D-Bus transaction logic
-- `src/state_logic.rs` – GTK-independent installed-state classification and action mapping (+ unit tests)
-- `src/installed_state.rs` – RPM query adapter into `state_logic`
-- `src/error.rs` – typed error model
-- `assets/com.example.RpmInstallerGui.desktop` – desktop file
-- `assets/com.example.RpmInstallerGui.metainfo.xml` – AppStream metadata
+If daemon activation fails or the service is missing, the app reports it as a daemon-unavailable error.
+
+## Local RPM operation behavior
+
+For local RPM input, operation selection is driven by installed-state classification:
+
+- `NotInstalled` → backend operation `install` (button: Install)
+- `SameVersion` → backend operation `reinstall` (button: Reinstall)
+- `Upgrade` → backend operation `upgrade` (button: Install)
+- `Downgrade` → backend operation `downgrade` (button: Install + explicit confirmation)
+
+No fake reinstall/downgrade labeling is used.
+
+## UI design notes
+
+The main window was redesigned to follow libadwaita patterns:
+
+- `adw::Application` + `adw::ApplicationWindow`
+- Integrated `adw::ToolbarView` + `adw::HeaderBar` (no detached/seam look)
+- Compact `adw::Clamp` layout
+- Structured groups (`adw::PreferencesGroup`, `adw::ActionRow`, `adw::ExpanderRow`)
+- `gtk::Revealer` for transient progress and status
+- `adw::ToastOverlay` for success/toast feedback
+- `adw::StatusPage` for readable cancellation/error/success presentation
+
+Theme handling uses `AdwStyleManager::set_color_scheme` and does not use `GtkSettings:gtk-application-prefer-dark-theme`.
 
 ## Build & run
 
@@ -68,45 +65,17 @@ cargo build
 cargo run -- /path/to/package.rpm
 ```
 
-Example with URI input:
+URI input is also accepted:
 
 ```bash
 cargo run -- file:///home/user/Downloads/example.rpm
 ```
 
-## Desktop integration (local install)
-
-Install desktop integration files for your user:
+## Test commands
 
 ```bash
-install -Dm644 assets/com.example.RpmInstallerGui.desktop ~/.local/share/applications/com.example.RpmInstallerGui.desktop
-install -Dm644 assets/com.example.RpmInstallerGui.metainfo.xml ~/.local/share/metainfo/com.example.RpmInstallerGui.metainfo.xml
-update-desktop-database ~/.local/share/applications
+cargo fmt
+cargo check
+cargo clippy --all-targets --all-features
+cargo test
 ```
-
-Set default RPM opener if needed:
-
-```bash
-xdg-mime default com.example.RpmInstallerGui.desktop application/x-rpm
-```
-
-## Behavior highlights
-
-- Accepts files from Nautilus (`%f`), CLI path, or `file://` URIs.
-- Validates and canonicalizes local path.
-- Rejects non-RPM files and directories with user-facing errors.
-- Displays package metadata including summary/description/license/vendor/URL/sizes/path/signature hints.
-- Uses **Install** vs **Reinstall** CTA based on installed-state check.
-- Shows installed version context near actions.
-- Shows progress and busy state during PackageKit transaction.
-- On success, shows Installed/Reinstalled and auto-closes after ~2 seconds.
-- On failure/cancel, keeps window open with a human-friendly error.
-
-## Notes for Fedora RPM packaging later
-
-- Install binary to `%{_bindir}/rpm-installer-gui`.
-- Install desktop file to `%{_datadir}/applications/com.example.RpmInstallerGui.desktop`.
-- Install metainfo file to `%{_datadir}/metainfo/com.example.RpmInstallerGui.metainfo.xml`.
-- Add runtime deps for GTK4/libadwaita and PackageKit.
-- Add MIME registration scriptlets as needed (`update-desktop-database`, `update-mime-database`).
-- Consider providing app icon at standard hicolor paths under `%{_datadir}/icons/hicolor/...`.
