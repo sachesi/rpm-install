@@ -21,7 +21,7 @@ BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  desktop-file-utils
 BuildRequires:  appstream
 
-Requires:       PackageKit
+Requires:       dnf5daemon-server
 
 %description
 %{summary}.
