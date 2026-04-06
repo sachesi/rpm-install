@@ -95,9 +95,9 @@ where
 
     let session_proxy = SessionManagerProxy::builder(&connection)
         .destination(DNF5_BUS)
-        .map_err(AppError::Other)?
+        .map_err(|e| AppError::Other(e.into()))?
         .path(DNF5_ROOT_PATH)
-        .map_err(AppError::Other)?
+        .map_err(|e| AppError::Other(e.into()))?
         .build()
         .await
         .map_err(|err| map_connection_error(err, "Could not reach dnf5daemon SessionManager"))?;
@@ -109,14 +109,14 @@ where
 
     let rpm_proxy = RpmProxy::builder(&connection)
         .path(session_path.clone())
-        .map_err(AppError::Other)?
+        .map_err(|e| AppError::Other(e.into()))?
         .build()
         .await
         .map_err(|err| map_method_error(err, "Could not open dnf5daemon rpm interface"))?;
 
     let goal_proxy = GoalProxy::builder(&connection)
         .path(session_path.clone())
-        .map_err(AppError::Other)?
+        .map_err(|e| AppError::Other(e.into()))?
         .build()
         .await
         .map_err(|err| map_method_error(err, "Could not open dnf5daemon goal interface"))?;
@@ -200,6 +200,7 @@ where
     tx_opts.insert("offline", false.into());
 
     let mut do_tx = goal_proxy.do_transaction(tx_opts).fuse();
+    futures_util::pin_mut!(do_tx);
     let mut saw_completion = false;
 
     loop {
@@ -210,7 +211,7 @@ where
             }
             signal = action_progress.next() => {
                 if let Some(msg) = signal {
-                    let args = msg.args().map_err(AppError::Other)?;
+                    let args = msg.args().map_err(|e| AppError::Other(e.into()))?;
                     if args.session_object_path() == session_path {
                         on_progress(progress_to_percent(*args.processed(), *args.total()));
                     }
@@ -218,7 +219,7 @@ where
             }
             signal = overall_progress.next() => {
                 if let Some(msg) = signal {
-                    let args = msg.args().map_err(AppError::Other)?;
+                    let args = msg.args().map_err(|e| AppError::Other(e.into()))?;
                     if args.session_object_path() == session_path {
                         on_progress(progress_to_percent(*args.processed(), *args.total()));
                     }
@@ -226,7 +227,7 @@ where
             }
             signal = completion.next() => {
                 if let Some(msg) = signal {
-                    let args = msg.args().map_err(AppError::Other)?;
+                    let args = msg.args().map_err(|e| AppError::Other(e.into()))?;
                     if args.session_object_path() == session_path {
                         saw_completion = true;
                         if !args.success() {
@@ -237,7 +238,7 @@ where
             }
             signal = unpack_error.next() => {
                 if let Some(msg) = signal {
-                    let args = msg.args().map_err(AppError::Other)?;
+                    let args = msg.args().map_err(|e| AppError::Other(e.into()))?;
                     if args.session_object_path() == session_path {
                         return Err(AppError::InstallFailure(format!(
                             "Failed while unpacking package {}",
