@@ -7,7 +7,7 @@ use gtk::{Align, Orientation};
 use crate::backend::types::BackendOperation;
 use crate::installed_state::InstalledState;
 use crate::rpm_info::{RpmInfo, format_size};
-use crate::state_logic::{ActionMode, InstallRelation};
+use crate::state_logic::ActionMode;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum DetailKey {
