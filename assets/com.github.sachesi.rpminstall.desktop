@@ -6,7 +6,6 @@ Comment=Install local RPM packages with dnf5daemon
 Exec=rpm-install %f
 Icon=com.github.sachesi.rpminstall
 Terminal=false
-NoDisplay=true
 Categories=System;PackageManager;GTK;
 StartupNotify=true
 MimeType=application/x-rpm;application/vnd.rpm;
