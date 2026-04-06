@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use gio::prelude::FileExt;
 use rpm::Package;
 
 use crate::error::{AppError, AppResult};
@@ -27,19 +28,6 @@ pub struct RpmInfo {
 }
 
 impl RpmInfo {
-    pub fn nevra(&self) -> String {
-        match self.epoch {
-            Some(epoch) => format!(
-                "{}-{}:{}-{}.{}",
-                self.name, epoch, self.version, self.release, self.arch
-            ),
-            None => format!(
-                "{}-{}-{}.{}",
-                self.name, self.version, self.release, self.arch
-            ),
-        }
-    }
-
     pub fn is_source_rpm(&self) -> bool {
         self.arch == "src" || self.arch == "nosrc"
     }
@@ -64,12 +52,10 @@ fn validate_local_path(path: &Path) -> AppResult<PathBuf> {
     let canonical = path
         .canonicalize()
         .with_context(|| format!("Could not resolve path {}", path.display()))
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let metadata = fs::metadata(&canonical)
         .with_context(|| format!("Could not read metadata for {}", canonical.display()))
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     if metadata.is_dir() {
@@ -92,7 +78,6 @@ fn validate_local_path(path: &Path) -> AppResult<PathBuf> {
 pub fn read_rpm_info(path: &Path) -> AppResult<RpmInfo> {
     let pkg = Package::open(path)
         .with_context(|| format!("Failed to parse RPM file {}", path.display()))
-        .map_err(anyhow::Error::from)
         .map_err(AppError::Other)?;
 
     let package_size = fs::metadata(path).ok().map(|m| m.len());
