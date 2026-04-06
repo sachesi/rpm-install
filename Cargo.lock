@@ -2296,8 +2296,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpm-installer-gui"
-version = "0.1.2"
+name = "rpm-install"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "futures-util",
