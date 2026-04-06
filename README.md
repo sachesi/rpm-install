@@ -7,9 +7,11 @@ A Linux-first desktop app in Rust for opening local `.rpm` files (including Naut
 - **Frontend:** `adw::Application` with GTK4/libadwaita widgets and a fixed-size non-resizable `adw::ApplicationWindow`.
 - **Open flow:** `gio::ApplicationFlags::HANDLES_OPEN` handles desktop-open and CLI file arguments.
 - **RPM metadata:** parsed directly from the local RPM file with the `rpm` crate for immediate display.
-- **Installed-state detection:** uses `rpm -q --qf` to compare installed `epoch:version-release.arch` with the selected local RPM.
+- **Installed-state detection:** queries installed package EVR+arch and compares with local EVR using RPM version comparison semantics.
 - **Install backend:** PackageKit D-Bus APIs (`CreateTransaction` + `InstallFiles`) via `packagekit-zbus`.
-- **Reinstall behavior:** if exact NEVRA is installed, UI switches to **Reinstall** and install is attempted with `ALLOW_REINSTALL` transaction flag; fallback retries without this flag if unsupported.
+- **Reinstall behavior:**
+  - Primary path: `InstallFiles` with PackageKit transaction flags `ALLOW_REINSTALL | JUST_REINSTALL`.
+  - Native fallback path (when reinstall flags are not supported by the backend): resolve installed package id via PackageKit, remove through PackageKit `RemovePackages`, then install local file via PackageKit `InstallFiles`.
 
 ## Crates selected (latest compatible at implementation time)
 
@@ -32,6 +34,17 @@ A Linux-first desktop app in Rust for opening local `.rpm` files (including Naut
   - PolicyKit agent available for admin authentication prompt
   - GNOME/GTK4/libadwaita runtime and dev packages installed
 - Intended for local files only (`/path/*.rpm` and `file://` URIs that resolve to local/native files).
+
+## Installed-state categories
+
+The app distinguishes these states using EVR + arch comparison:
+
+- **Not installed** → primary action: `Install`
+- **Installed same build** → primary action: `Reinstall`
+- **Installed older version** → primary action: `Install` (update behavior)
+- **Installed newer version** → primary action: `Install` with explicit downgrade warning
+
+A compact status line near the action area shows the detected installed build, e.g. `Installed: 1:1.2.3-1.fc44.x86_64`.
 
 ## Project layout
 
@@ -81,6 +94,7 @@ xdg-mime default com.example.RpmInstallerGui.desktop application/x-rpm
 - Rejects non-RPM files and directories with user-facing errors.
 - Displays package metadata including summary/description/license/vendor/URL/sizes/path/signature hints.
 - Uses **Install** vs **Reinstall** CTA based on installed-state check.
+- Shows installed version context near actions.
 - Shows progress and busy state during PackageKit transaction.
 - On success, shows Installed/Reinstalled and auto-closes after ~2 seconds.
 - On failure/cancel, keeps window open with a human-friendly error.
