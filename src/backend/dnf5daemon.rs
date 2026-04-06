@@ -4,7 +4,7 @@ use anyhow::Context;
 use futures_util::{FutureExt, StreamExt};
 use tracing::{info, warn};
 use zbus::{Connection, Proxy};
-use zvariant::{OwnedObjectPath, Value};
+use zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use crate::backend::types::BackendOperation;
 use crate::error::{AppError, AppResult};
@@ -72,17 +72,18 @@ where
     call_rpm_op(&rpm, operation, &(specs, empty_options)).await?;
 
     let resolve_options = HashMap::from([("allow_erasing".to_string(), Value::from(true))]);
+    let resolve_body = (resolve_options,);
     let (_, resolve_result): (
         Vec<(
             String,
             String,
             String,
-            HashMap<String, Value<'_>>,
-            HashMap<String, Value<'_>>,
+            HashMap<String, OwnedValue>,
+            HashMap<String, OwnedValue>,
         )>,
         u32,
     ) = goal
-        .call("resolve", &(resolve_options,))
+        .call("resolve", &resolve_body)
         .await
         .map_err(|err| map_dbus_error(err, operation))?;
 
@@ -111,8 +112,9 @@ where
         .map_err(AppError::Other)?;
 
     let tx_options = HashMap::from([("interactive".to_string(), Value::from(true))]);
+    let tx_body = (tx_options,);
     let run_tx = goal
-        .call_method("do_transaction", &(tx_options,))
+        .call_method("do_transaction", &tx_body)
         .map(|r| r.map_err(|err| map_dbus_error(err, operation)))
         .fuse();
     futures_util::pin_mut!(run_tx);
