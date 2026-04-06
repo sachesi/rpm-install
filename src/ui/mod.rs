@@ -597,7 +597,7 @@ fn install_custom_css() {
 
     INIT.call_once(|| {
         let provider = gtk::CssProvider::new();
-        provider.load_from_data(
+        provider.load_from_string(
             "
             .state-install { color: #3A944A; }
             .state-reinstall { color: #3584E4; }

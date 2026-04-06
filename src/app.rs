@@ -230,7 +230,12 @@ fn wire_uninstall_action(ui: &Ui, relation: &InstallRelation, package_name: Stri
     });
 }
 
-fn run_confirmed_transaction(ui: Ui, spec: String, operation: BackendOperation, log_prefix: &str) {
+fn run_confirmed_transaction(
+    ui: Ui,
+    spec: String,
+    operation: BackendOperation,
+    log_prefix: &'static str,
+) {
     ui.set_running(true);
 
     glib::MainContext::default().spawn_local(async move {
