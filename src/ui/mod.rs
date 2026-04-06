@@ -8,7 +8,7 @@ use gtk::{Align, Orientation};
 use crate::backend::types::BackendOperation;
 use crate::installed_state::InstalledState;
 use crate::rpm_info::{RpmInfo, format_size};
-use crate::state_logic::InstallRelation;
+use crate::state_logic::{ActionMode, InstallRelation};
 
 #[derive(Clone)]
 pub struct Ui {
@@ -199,7 +199,12 @@ impl Ui {
         }
     }
 
-    pub fn bind_package(&self, info: &RpmInfo, installed: &InstalledState, op: BackendOperation) {
+    pub fn bind_package(
+        &self,
+        info: &RpmInfo,
+        installed: &InstalledState,
+        action_mode: ActionMode,
+    ) {
         self.package_name_label.set_label(&info.name);
         self.version_label.set_label(&format!(
             "Version: {}{}-{}",
@@ -238,7 +243,11 @@ impl Ui {
                 .unwrap_or_else(|| state_text.to_string()),
         );
 
-        self.action_button.set_label(op.label());
+        let button_label = match action_mode {
+            ActionMode::Install | ActionMode::Downgrade => BackendOperation::Install.label(),
+            ActionMode::Reinstall => BackendOperation::Reinstall.label(),
+        };
+        self.action_button.set_label(button_label);
 
         let values = [
             info.summary.clone().unwrap_or_else(|| "—".to_string()),
