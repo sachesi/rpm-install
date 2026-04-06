@@ -10,7 +10,7 @@ pub enum InstallRelation {
     Downgrade,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionMode {
     Install,
     Reinstall,
