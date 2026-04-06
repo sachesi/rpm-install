@@ -5,8 +5,9 @@ use adw::prelude::*;
 use gtk::pango;
 use gtk::{Align, Orientation};
 
-use crate::installed_state::{InstallRelation, InstalledState};
+use crate::installed_state::InstalledState;
 use crate::rpm_info::{RpmInfo, format_size};
+use crate::state_logic::InstallRelation;
 
 #[derive(Clone)]
 pub struct Ui {
