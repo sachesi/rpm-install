@@ -26,6 +26,7 @@ pub struct ConfirmationCopy<'a> {
 pub enum ActionMode {
     Install,
     Reinstall,
+    Upgrade,
     Downgrade,
 }
 
@@ -95,8 +96,9 @@ fn compare_candidates(
 pub fn action_for_relation(relation: &InstallRelation) -> ActionMode {
     match relation {
         InstallRelation::SameVersion => ActionMode::Reinstall,
+        InstallRelation::Upgrade => ActionMode::Upgrade,
         InstallRelation::Downgrade => ActionMode::Downgrade,
-        InstallRelation::NotInstalled | InstallRelation::Upgrade => ActionMode::Install,
+        InstallRelation::NotInstalled => ActionMode::Install,
     }
 }
 
@@ -139,7 +141,7 @@ impl InstallRelation {
                 destructive: false,
             },
             InstallRelation::Upgrade => ConfirmationCopy {
-                heading: "Confirm install",
+                heading: "Confirm upgrade",
                 body: "An older version is installed. Continue to upgrade using this local RPM?",
                 destructive: false,
             },
@@ -177,6 +179,7 @@ mod tests {
         let local_new = pkg("foo", "0:1.2.4-1", "x86_64");
         let state_new = classify_state(&local_new, &[pkg("foo", "0:1.2.3-1", "x86_64")]);
         assert_eq!(state_new.relation, InstallRelation::Upgrade);
+        assert_eq!(action_for_relation(&state_new.relation), ActionMode::Upgrade);
 
         let local_old = pkg("foo", "0:1.2.2-1", "x86_64");
         let state_old = classify_state(&local_old, &[pkg("foo", "0:1.2.3-1", "x86_64")]);
