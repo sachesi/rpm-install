@@ -138,6 +138,7 @@ fn wire_install_action(
         let confirm_action_label = match action_mode {
             ActionMode::Install | ActionMode::Downgrade => "Install",
             ActionMode::Reinstall => "Reinstall",
+            ActionMode::Upgrade => "Upgrade",
         };
         confirm.add_response("cancel", "Cancel");
         confirm.add_response("ok", confirm_action_label);
@@ -250,12 +251,7 @@ fn run_confirmed_transaction(
         match result {
             Ok(done) => {
                 let msg = format!("{} successfully", done.verb_past());
-                ui.show_status(
-                    "emblem-ok-symbolic",
-                    "Transaction complete",
-                    &msg,
-                    Some("success"),
-                );
+                ui.show_toast(&msg);
                 info!("{}: {}", msg, spec);
 
                 let win = ui.window.clone();

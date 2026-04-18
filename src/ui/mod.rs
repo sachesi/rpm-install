@@ -67,6 +67,7 @@ pub struct Ui {
     status_body: gtk::Label,
     details_title: gtk::Label,
     detail_rows: HashMap<DetailKey, DetailBinding>,
+    toast_overlay: adw::ToastOverlay,
 }
 
 #[derive(Debug)]
@@ -87,6 +88,7 @@ struct PackageViewModel {
 enum StateTone {
     Install,
     Reinstall,
+    Upgrade,
     Downgrade,
 }
 
@@ -102,10 +104,12 @@ impl PackageViewModel {
         let action_label = match action_mode {
             ActionMode::Install | ActionMode::Downgrade => BackendOperation::Install.label(),
             ActionMode::Reinstall => BackendOperation::Reinstall.label(),
+            ActionMode::Upgrade => "Upgrade",
         };
         let state_tone = match action_mode {
             ActionMode::Install => StateTone::Install,
             ActionMode::Reinstall => StateTone::Reinstall,
+            ActionMode::Upgrade => StateTone::Upgrade,
             ActionMode::Downgrade => StateTone::Downgrade,
         };
 
@@ -466,7 +470,10 @@ impl Ui {
         toolbar_view.set_content(Some(&clamp));
         toolbar_view.add_bottom_bar(&footer_box);
 
-        window.set_content(Some(&toolbar_view));
+        let toast_overlay = adw::ToastOverlay::new();
+        toast_overlay.set_child(Some(&toolbar_view));
+
+        window.set_content(Some(&toast_overlay));
 
         Self {
             window,
@@ -487,6 +494,7 @@ impl Ui {
             status_body,
             details_title,
             detail_rows,
+            toast_overlay,
         }
     }
 
@@ -578,14 +586,20 @@ impl Ui {
         self.status_body.set_label("");
     }
 
+    pub fn show_toast(&self, message: &str) {
+        self.toast_overlay.add_toast(adw::Toast::new(message));
+    }
+
     fn set_state_tone(&self, tone: StateTone) {
         self.state_title_label.remove_css_class("state-install");
         self.state_title_label.remove_css_class("state-reinstall");
+        self.state_title_label.remove_css_class("state-upgrade");
         self.state_title_label.remove_css_class("state-downgrade");
 
         match tone {
             StateTone::Install => self.state_title_label.add_css_class("state-install"),
             StateTone::Reinstall => self.state_title_label.add_css_class("state-reinstall"),
+            StateTone::Upgrade => self.state_title_label.add_css_class("state-upgrade"),
             StateTone::Downgrade => self.state_title_label.add_css_class("state-downgrade"),
         }
     }
@@ -601,6 +615,7 @@ fn install_custom_css() {
             "
             .state-install { color: #3A944A; }
             .state-reinstall { color: #3584E4; }
+            .state-upgrade { color: #3584E4; }
             .state-downgrade { color: #3584E4; }
             ",
         );
