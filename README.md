@@ -29,6 +29,11 @@ Benefits:
 
 ## Release notes
 
+### 0.3.5 (2026-04-18)
+
+- Switched desktop integration to the system themed RPM icon name `application-x-rpm`.
+- Polished desktop/appstream metadata consistency while keeping app ID `com.github.sachesi.rpminstall`.
+
 ### 0.1.3 (2026-04-06)
 
 - Added relation-colored installed-state heading (install/reinstall/downgrade) for quicker visual status scanning.
