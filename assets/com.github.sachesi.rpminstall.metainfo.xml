@@ -3,12 +3,19 @@
   <id>com.github.sachesi.rpminstall</id>
   <name>RPM Installer</name>
   <summary>Install local RPM files through dnf5daemon</summary>
+  <icon type="stock">application-x-rpm</icon>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <description>
     <p>A small libadwaita desktop app that installs local RPM files from Nautilus using dnf5daemon authorization and transaction APIs.</p>
   </description>
   <releases>
+    <release version="0.3.5" date="2026-04-18">
+      <description>
+        <p>Switched desktop integration to the system themed RPM icon for cleaner icon consistency.</p>
+        <p>Polished application metadata while keeping the same stable app ID.</p>
+      </description>
+    </release>
     <release version="0.3.4" date="2026-04-06">
       <description>
         <p>Added relation-colored status headings and an uninstall action for already-installed packages, with continued stability hardening.</p>
