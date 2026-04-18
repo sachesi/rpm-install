@@ -4,7 +4,7 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.4
+Version:        0.3.5
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        MIT
@@ -89,6 +89,10 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-1
+- Use system themed RPM icon (application-x-rpm) for desktop integration
+- Refresh AppStream/README release metadata for 0.3.5
+
 * Mon Apr 06 2026 rpm-install packager <packager@example.com> - 0.3.4-1
 - Rename project from rpm-installer to rpm-install
 - Rename compiled binary to rpm-install
