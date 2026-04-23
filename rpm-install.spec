@@ -4,27 +4,25 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.5
+Version:        0.3.7
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
-License:        MIT
-URL:            https://example.com/rpm-install
-%if ! 0%{?_build_in_place}
-Source0:        %{url}/archive/refs/tags/%{version}/%{name}-%{version}.tar.gz
-%endif
+License:        GPL-3.0-or-later
+URL:            https://github.com/sachesi/rpm-install
+Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
+Source1:        %{name}-%{version}-vendor.tar.zst
 
 BuildRequires:  cargo
-BuildRequires:  cargo-rpm-macros
-BuildRequires:  rust >= 1.74
+BuildRequires:  rust
+BuildRequires:  gcc
 BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  desktop-file-utils
-BuildRequires:  appstream
 
 Requires:       dnf5daemon-server
 
 %description
-%{summary}.
+GTK4/libadwaita GUI installer for local RPM files via dnf5daemon.
 
 The application accepts local .rpm files (paths or file:// URIs), reads package
 metadata, and installs or reinstalls packages using dnf5daemon transactions.
@@ -32,63 +30,52 @@ It integrates with desktop MIME handling so RPM files can be opened directly in
 the GUI.
 
 %prep
-%if 0%{?_build_in_place}
-# Build directly from the current checkout when rpmbuild is called with:
-#   --define '_build_in_place 1'
-%else
 %autosetup -n %{name}-%{version}
-%endif
+tar -xaf %{SOURCE1}
 
-%generate_buildrequires
-%if ! 0%{?_build_in_place}
-%cargo_generate_buildrequires
-%endif
+mkdir -p .cargo
+cat > .cargo/config.toml <<'EOF'
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+EOF
 
 %build
-%if 0%{?_build_in_place}
-cargo build --release
-%else
-%cargo_build --release
-%endif
+export CARGO_HOME=$PWD/.cargo-home
+cargo build --release --frozen --offline
 
 %install
-%if 0%{?_build_in_place}
-install -Dm755 target/release/rpm-install %{buildroot}%{_bindir}/rpm-install
-%else
-%cargo_install
-%endif
+install -Dm755 target/release/rpm-install \
+    %{buildroot}%{_bindir}/rpm-install
 
 install -Dm644 packaging/%{app_id}.desktop \
     %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-install -Dm644 packaging/%{app_id}.metainfo.xml \
-    %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-if command -v appstream-util >/dev/null 2>&1; then
-    appstream-util validate-relax --nonet \
-        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
-elif command -v appstreamcli >/dev/null 2>&1; then
-    appstreamcli validate --no-net \
-        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
-else
-    echo "Neither appstream-util nor appstreamcli is available" >&2
-    exit 1
-fi
-
-%post
-update-desktop-database %{_datadir}/applications &> /dev/null || :
-
-%postun
-update-desktop-database %{_datadir}/applications &> /dev/null || :
 
 %files
+%license LICENSE*
 %doc README.md
 %{_bindir}/rpm-install
 %{_datadir}/applications/%{app_id}.desktop
-%{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.7-1
+- Change license to GPL-3.0
+- Add actual LICENSE file
+- Bump version to 0.3.7
+
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.6-1
+- Drop appstream metainfo
+- Add Settings to .desktop category
+
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-2
+- Use vendored offline COPR build
+- Add .copr/Makefile
+
 * Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-1
 - Use system themed RPM icon (application-x-rpm) for desktop integration
 - Refresh AppStream/README release metadata for 0.3.5

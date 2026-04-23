@@ -7,6 +7,6 @@ Exec=rpm-install %f
 Icon=application-x-rpm
 Terminal=false
 NoDisplay=true
-Categories=System;PackageManager;GTK;
+Categories=System;PackageManager;GTK;Settings;
 StartupNotify=true
 MimeType=application/x-rpm;application/vnd.rpm;
