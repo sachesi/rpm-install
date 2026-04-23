@@ -4,10 +4,10 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.6
+Version:        0.3.7
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
-License:        MIT
+License:        GPL-3.0-or-later
 URL:            https://github.com/sachesi/rpm-install
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 Source1:        %{name}-%{version}-vendor.tar.zst
@@ -63,6 +63,11 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 %{_datadir}/applications/%{app_id}.desktop
 
 %changelog
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.7-1
+- Change license to GPL-3.0
+- Add actual LICENSE file
+- Bump version to 0.3.7
+
 * Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.6-1
 - Drop appstream metainfo
 - Add Settings to .desktop category
