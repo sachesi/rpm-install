@@ -4,8 +4,8 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.5
-Release:        2%{?dist}
+Version:        0.3.6
+Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        MIT
 URL:            https://github.com/sachesi/rpm-install
@@ -18,7 +18,6 @@ BuildRequires:  gcc
 BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  desktop-file-utils
-BuildRequires:  appstream
 
 Requires:       dnf5daemon-server
 
@@ -54,30 +53,20 @@ install -Dm755 target/release/rpm-install \
 install -Dm644 packaging/%{app_id}.desktop \
     %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 
-install -Dm644 packaging/%{app_id}.metainfo.xml \
-    %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
-
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
-if command -v appstream-util >/dev/null 2>&1; then
-    appstream-util validate-relax --nonet \
-        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
-elif command -v appstreamcli >/dev/null 2>&1; then
-    appstreamcli validate --no-net \
-        %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
-else
-    echo "Neither appstream-util nor appstreamcli is available" >&2
-    exit 1
-fi
 
 %files
 %license LICENSE*
 %doc README.md
 %{_bindir}/rpm-install
 %{_datadir}/applications/%{app_id}.desktop
-%{_datadir}/metainfo/%{app_id}.metainfo.xml
 
 %changelog
+* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.6-1
+- Drop appstream metainfo
+- Add Settings to .desktop category
+
 * Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-2
 - Use vendored offline COPR build
 - Add .copr/Makefile

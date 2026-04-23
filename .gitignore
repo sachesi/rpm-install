@@ -1,1 +1,5 @@
 /target
+vendor/
+.cargo/
+*.tar.gz
+*.tar.zst
