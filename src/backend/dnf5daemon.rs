@@ -19,6 +19,41 @@ const IFACE_BASE: &str = "org.rpm.dnf.v0.Base";
 const RESOLVE_OK: u32 = 0;
 const RESOLVE_WARNINGS: u32 = 1;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TransactionPreview {
+    pub additional_package_changes: Vec<String>,
+}
+
+#[derive(Debug)]
+struct ResolvedTransactionItem {
+    object_type: String,
+    action: String,
+    reason: String,
+    object: HashMap<String, OwnedValue>,
+}
+
+pub async fn preview_local_rpm_transaction(
+    spec: &str,
+    operation: BackendOperation,
+) -> AppResult<TransactionPreview> {
+    let connection = Connection::system().await.map_err(map_connect_error)?;
+
+    let session_manager = proxy(&connection, ROOT_PATH, IFACE_SESSION_MANAGER).await?;
+    let session_path = open_session(&session_manager).await?;
+    info!(%session_path, ?operation, "Opened dnf5daemon preview session");
+
+    let preview_result = preview_in_session(&connection, &session_path, spec, operation).await;
+
+    if let Err(close_err) = close_session(&session_manager, &session_path).await {
+        warn!(
+            "Failed closing dnf5daemon preview session {}: {close_err}",
+            session_path.as_str()
+        );
+    }
+
+    preview_result
+}
+
 pub async fn run_local_rpm_transaction<F>(
     spec: &str,
     operation: BackendOperation,
@@ -52,6 +87,24 @@ where
     op_result.map(|_| operation)
 }
 
+async fn preview_in_session(
+    connection: &Connection,
+    session_path: &OwnedObjectPath,
+    spec: &str,
+    operation: BackendOperation,
+) -> AppResult<TransactionPreview> {
+    let rpm = proxy(connection, session_path.as_str(), IFACE_RPM).await?;
+    let goal = proxy(connection, session_path.as_str(), IFACE_GOAL).await?;
+
+    let specs = vec![spec.to_string()];
+    let empty_options = HashMap::<String, Value<'_>>::new();
+
+    call_rpm_op(&rpm, operation, &(specs, empty_options)).await?;
+
+    let resolved_items = resolve_transaction(&goal, operation).await?;
+    Ok(build_preview(&resolved_items))
+}
+
 async fn run_in_session<F>(
     connection: &Connection,
     session_path: &OwnedObjectPath,
@@ -70,33 +123,7 @@ where
     let empty_options = HashMap::<String, Value<'_>>::new();
 
     call_rpm_op(&rpm, operation, &(specs, empty_options)).await?;
-
-    let resolve_options = HashMap::from([("allow_erasing".to_string(), Value::from(true))]);
-    let resolve_body = (resolve_options,);
-    let (_, resolve_result): (
-        Vec<(
-            String,
-            String,
-            String,
-            HashMap<String, OwnedValue>,
-            HashMap<String, OwnedValue>,
-        )>,
-        u32,
-    ) = goal
-        .call("resolve", &resolve_body)
-        .await
-        .map_err(|err| map_dbus_error(err, operation))?;
-
-    if resolve_result != RESOLVE_OK && resolve_result != RESOLVE_WARNINGS {
-        let problems: Vec<String> = goal
-            .call("get_transaction_problems_string", &())
-            .await
-            .unwrap_or_else(|_| vec!["Dependency resolution failed.".to_string()]);
-        return Err(AppError::OperationFailed {
-            operation,
-            details: problems.join("\n"),
-        });
-    }
+    resolve_transaction(&goal, operation).await?;
 
     on_progress(None);
 
@@ -149,6 +176,101 @@ where
     }
 
     Ok(())
+}
+
+async fn resolve_transaction(
+    goal: &Proxy<'_>,
+    operation: BackendOperation,
+) -> AppResult<Vec<ResolvedTransactionItem>> {
+    let resolve_options = HashMap::from([("allow_erasing".to_string(), Value::from(true))]);
+    let resolve_body = (resolve_options,);
+    let (transaction_items, resolve_result): (
+        Vec<(
+            String,
+            String,
+            String,
+            HashMap<String, OwnedValue>,
+            HashMap<String, OwnedValue>,
+        )>,
+        u32,
+    ) = goal
+        .call("resolve", &resolve_body)
+        .await
+        .map_err(|err| map_dbus_error(err, operation))?;
+
+    if resolve_result != RESOLVE_OK && resolve_result != RESOLVE_WARNINGS {
+        let problems: Vec<String> = goal
+            .call("get_transaction_problems_string", &())
+            .await
+            .unwrap_or_else(|_| vec!["Dependency resolution failed.".to_string()]);
+        return Err(AppError::OperationFailed {
+            operation,
+            details: problems.join("\n"),
+        });
+    }
+
+    Ok(transaction_items
+        .into_iter()
+        .map(
+            |(object_type, action, reason, _attributes, object)| ResolvedTransactionItem {
+                object_type,
+                action,
+                reason,
+                object,
+            },
+        )
+        .collect())
+}
+
+fn build_preview(items: &[ResolvedTransactionItem]) -> TransactionPreview {
+    let mut additional_package_changes = items
+        .iter()
+        .filter(|item| is_additional_package_change(item))
+        .filter_map(format_transaction_item)
+        .collect::<Vec<_>>();
+    additional_package_changes.sort();
+    additional_package_changes.dedup();
+
+    TransactionPreview {
+        additional_package_changes,
+    }
+}
+
+fn is_additional_package_change(item: &ResolvedTransactionItem) -> bool {
+    item.object_type.eq_ignore_ascii_case("Package")
+        && !item.reason.eq_ignore_ascii_case("User")
+        && matches!(
+            item.action.as_str(),
+            "Install" | "Upgrade" | "Downgrade" | "Reinstall"
+        )
+}
+
+fn format_transaction_item(item: &ResolvedTransactionItem) -> Option<String> {
+    let subject = transaction_item_subject(&item.object)?;
+    Some(format!("{} {}", item.action, subject))
+}
+
+fn transaction_item_subject(object: &HashMap<String, OwnedValue>) -> Option<String> {
+    for key in ["full_nevra", "nevra"] {
+        if let Some(value) = owned_string(object.get(key)) {
+            return Some(value);
+        }
+    }
+
+    let name = owned_string(object.get("name"))?;
+    let evr = owned_string(object.get("evr"));
+    let arch = owned_string(object.get("arch"));
+
+    match (evr, arch) {
+        (Some(evr), Some(arch)) => Some(format!("{name}-{evr}.{arch}")),
+        (Some(evr), None) => Some(format!("{name}-{evr}")),
+        _ => Some(name),
+    }
+}
+
+fn owned_string(value: Option<&OwnedValue>) -> Option<String> {
+    let value = value?;
+    String::try_from(value.clone()).ok()
 }
 
 async fn proxy<'a>(
@@ -247,5 +369,63 @@ fn map_dbus_error(err: zbus::Error, operation: BackendOperation) -> AppError {
     AppError::OperationFailed {
         operation,
         details: msg,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use zvariant::{OwnedValue, Value};
+
+    use super::{ResolvedTransactionItem, build_preview};
+
+    fn owned_str(input: &str) -> OwnedValue {
+        OwnedValue::try_from(Value::from(input)).expect("string value")
+    }
+
+    #[test]
+    fn preview_lists_only_non_user_package_changes() {
+        let local_user = ResolvedTransactionItem {
+            object_type: "Package".to_string(),
+            action: "Install".to_string(),
+            reason: "User".to_string(),
+            object: HashMap::from([("full_nevra".to_string(), owned_str("app-1:2.0-1.x86_64"))]),
+        };
+        let dependency = ResolvedTransactionItem {
+            object_type: "Package".to_string(),
+            action: "Install".to_string(),
+            reason: "Dependency".to_string(),
+            object: HashMap::from([(
+                "full_nevra".to_string(),
+                owned_str("libfoo-0:1.2.3-1.fc42.x86_64"),
+            )]),
+        };
+        let upgrade = ResolvedTransactionItem {
+            object_type: "Package".to_string(),
+            action: "Upgrade".to_string(),
+            reason: "Dependency".to_string(),
+            object: HashMap::from([
+                ("name".to_string(), owned_str("glibc")),
+                ("evr".to_string(), owned_str("0:2.41-7.fc42")),
+                ("arch".to_string(), owned_str("x86_64")),
+            ]),
+        };
+        let group = ResolvedTransactionItem {
+            object_type: "Group".to_string(),
+            action: "Install".to_string(),
+            reason: "Dependency".to_string(),
+            object: HashMap::new(),
+        };
+
+        let preview = build_preview(&[local_user, dependency, upgrade, group]);
+
+        assert_eq!(
+            preview.additional_package_changes,
+            vec![
+                "Install libfoo-0:1.2.3-1.fc42.x86_64".to_string(),
+                "Upgrade glibc-0:2.41-7.fc42.x86_64".to_string(),
+            ]
+        );
     }
 }

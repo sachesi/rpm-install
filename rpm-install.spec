@@ -4,7 +4,7 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.7
+Version:        0.3.8
 Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
 License:        GPL-3.0-or-later
@@ -63,31 +63,35 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 %{_datadir}/applications/%{app_id}.desktop
 
 %changelog
-* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.7-1
+* Fri Apr 24 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.8-1
+- Preview dependency installs in the confirmation dialog
+- Bump version to 0.3.8
+
+* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.7-1
 - Change license to GPL-3.0
 - Add actual LICENSE file
 - Bump version to 0.3.7
 
-* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.6-1
+* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.6-1
 - Drop appstream metainfo
 - Add Settings to .desktop category
 
-* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-2
+* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.5-2
 - Use vendored offline COPR build
 - Add .copr/Makefile
 
-* Sat Apr 18 2026 rpm-install packager <packager@example.com> - 0.3.5-1
+* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.5-1
 - Use system themed RPM icon (application-x-rpm) for desktop integration
 - Refresh AppStream/README release metadata for 0.3.5
 
-* Mon Apr 06 2026 rpm-install packager <packager@example.com> - 0.3.4-1
+* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.4-1
 - Rename project from rpm-installer to rpm-install
 - Rename compiled binary to rpm-install
 
-* Mon Apr 06 2026 rpm-install packager <packager@example.com> - 0.1.2-1
+* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.1.2-1
 - Add colored install-state heading cues and uninstall action for installed packages
 - Keep metadata/path validation and error handling hardening from stabilization pass
 
-* Mon Apr 06 2026 rpm-install packager <packager@example.com> - 0.1.0-1
+* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.1.0-1
 - Initial Fedora package with COPR-friendly Source0 mode
 - Keep local build-in-place workflow via --define '_build_in_place 1'

@@ -2,7 +2,9 @@ use adw::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
-use crate::backend::dnf5daemon::run_local_rpm_transaction;
+use crate::backend::dnf5daemon::{
+    TransactionPreview, preview_local_rpm_transaction, run_local_rpm_transaction,
+};
 use crate::backend::types::{BackendOperation, operation_for_relation};
 use crate::error::{AppError, AppResult};
 use crate::installed_state::detect_installed;
@@ -127,53 +129,89 @@ fn wire_install_action(
     let ui_cloned = ui.clone();
 
     ui.action_button.connect_clicked(move |_| {
-        ui_cloned.hide_status();
+        let ui_for_preview = ui_cloned.clone();
+        let info_for_preview = info.clone();
+        let relation_for_preview = relation.clone();
 
-        let confirm_copy = relation.confirmation_copy();
+        glib::MainContext::default().spawn_local(async move {
+            ui_for_preview.hide_status();
+            ui_for_preview.set_running(true);
 
-        let confirm = adw::AlertDialog::builder()
-            .heading(confirm_copy.heading)
-            .body(confirm_copy.body)
-            .build();
-        let confirm_action_label = match action_mode {
-            ActionMode::Install | ActionMode::Downgrade => "Install",
-            ActionMode::Reinstall => "Reinstall",
-            ActionMode::Upgrade => "Upgrade",
-        };
-        confirm.add_response("cancel", "Cancel");
-        confirm.add_response("ok", confirm_action_label);
-        if confirm_copy.destructive {
-            confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
-        } else {
-            confirm.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
-        }
-        confirm.set_default_response(Some("cancel"));
-        confirm.set_close_response("cancel");
+            let path = info_for_preview.path.display().to_string();
+            let preview_result = preview_local_rpm_transaction(&path, operation).await;
 
-        let ui_for_response = ui_cloned.clone();
-        let info_for_response = info.clone();
-        confirm.choose(
-            Some(&ui_cloned.window),
-            gio::Cancellable::NONE,
-            move |response| {
-                if response != "ok" {
-                    ui_for_response.show_status(
-                        "process-stop-symbolic",
-                        "Canceled",
-                        "Transaction was canceled before it started.",
-                        None,
-                    );
-                    return;
-                }
+            ui_for_preview.set_running(false);
 
-                let path = info_for_response.path.display().to_string();
-                run_confirmed_transaction(
-                    ui_for_response.clone(),
-                    path,
+            match preview_result {
+                Ok(preview) => present_install_confirmation(
+                    ui_for_preview.clone(),
+                    info_for_preview.clone(),
                     operation,
-                    "Install flow failed",
-                );
-            },
+                    action_mode,
+                    relation_for_preview.clone(),
+                    preview,
+                ),
+                Err(err) => {
+                    let human = humanize_error(&err, operation);
+                    ui_for_preview.show_status(
+                        "dialog-error-symbolic",
+                        "Could not review dependencies",
+                        &human,
+                        Some("error"),
+                    );
+                    error!("Dependency preview failed: {err}");
+                }
+            }
+        });
+    });
+}
+
+fn present_install_confirmation(
+    ui: Ui,
+    info: RpmInfo,
+    operation: BackendOperation,
+    action_mode: ActionMode,
+    relation: InstallRelation,
+    preview: TransactionPreview,
+) {
+    let confirm_copy = relation.confirmation_copy();
+    let confirm = adw::AlertDialog::builder()
+        .heading(confirm_copy.heading)
+        .body(build_confirmation_body(confirm_copy.body, &preview))
+        .build();
+    let confirm_action_label = match action_mode {
+        ActionMode::Install | ActionMode::Downgrade => "Install",
+        ActionMode::Reinstall => "Reinstall",
+        ActionMode::Upgrade => "Upgrade",
+    };
+    confirm.add_response("cancel", "Cancel");
+    confirm.add_response("ok", confirm_action_label);
+    if confirm_copy.destructive {
+        confirm.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
+    } else {
+        confirm.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
+    }
+    confirm.set_default_response(Some("cancel"));
+    confirm.set_close_response("cancel");
+
+    let ui_for_response = ui.clone();
+    confirm.choose(Some(&ui.window), gio::Cancellable::NONE, move |response| {
+        if response != "ok" {
+            ui_for_response.show_status(
+                "process-stop-symbolic",
+                "Canceled",
+                "Transaction was canceled before it started.",
+                None,
+            );
+            return;
+        }
+
+        let path = info.path.display().to_string();
+        run_confirmed_transaction(
+            ui_for_response.clone(),
+            path,
+            operation,
+            "Install flow failed",
         );
     });
 }
@@ -315,4 +353,61 @@ fn clamp_message(message: &str, max_chars: usize) -> String {
         trimmed.push('…');
     }
     trimmed
+}
+
+fn build_confirmation_body(base: &str, preview: &TransactionPreview) -> String {
+    if preview.additional_package_changes.is_empty() {
+        return format!("{base}\n\nNo additional packages are required for this transaction.");
+    }
+
+    const MAX_ITEMS: usize = 8;
+
+    let shown = preview
+        .additional_package_changes
+        .iter()
+        .take(MAX_ITEMS)
+        .map(|item| format!("- {item}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let remaining = preview
+        .additional_package_changes
+        .len()
+        .saturating_sub(MAX_ITEMS);
+    let remainder = if remaining == 0 {
+        String::new()
+    } else {
+        format!("\n...and {remaining} more.")
+    };
+
+    format!("{base}\n\nAdditional packages required for this transaction:\n{shown}{remainder}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TransactionPreview, build_confirmation_body};
+
+    #[test]
+    fn confirmation_body_mentions_when_no_extra_packages_are_needed() {
+        let body = build_confirmation_body(
+            "Install this local RPM package?",
+            &TransactionPreview::default(),
+        );
+
+        assert!(body.contains("No additional packages are required"));
+    }
+
+    #[test]
+    fn confirmation_body_limits_long_dependency_lists() {
+        let preview = TransactionPreview {
+            additional_package_changes: (1..=10).map(|idx| format!("Install dep{idx}")).collect(),
+        };
+
+        let body = build_confirmation_body("Install this local RPM package?", &preview);
+
+        assert!(body.contains("Additional packages required for this transaction"));
+        assert!(body.contains("- Install dep1"));
+        assert!(body.contains("- Install dep8"));
+        assert!(body.contains("...and 2 more."));
+        assert!(!body.contains("- Install dep9"));
+    }
 }
