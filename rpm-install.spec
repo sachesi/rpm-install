@@ -86,39 +86,44 @@ test -x %{buildroot}%{_bindir}/rpm-install
 %{_datadir}/applications/%{app_id}.desktop
 
 %changelog
-* Sun Apr 26 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.8-2
+* Mon May 11 2026 sachesi <xsachesi@pm.me> - 0.4.0-1
+- Add openSUSE support via Zypper backend
+- Unified backend architecture for cross-distro support
+- Makefile improvements for standard build/install workflows
+
+* Sun Apr 26 2026 sachesi <xsachesi@pm.me> - 0.3.8-2
 - Make vendored mode conditional and default-enabled for COPR offline rebuilds
 - Allow local online builds with --without vendored
 
-* Fri Apr 24 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.8-1
+* Fri Apr 24 2026 sachesi <xsachesi@pm.me> - 0.3.8-1
 - Preview dependency installs in the confirmation dialog
 - Bump version to 0.3.8
 
-* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.7-1
+* Sat Apr 18 2026 sachesi <xsachesi@pm.me> - 0.3.7-1
 - Change license to GPL-3.0
 - Add actual LICENSE file
 - Bump version to 0.3.7
 
-* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.6-1
+* Sat Apr 18 2026 sachesi <xsachesi@pm.me> - 0.3.6-1
 - Drop appstream metainfo
 - Add Settings to .desktop category
 
-* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.5-2
+* Sat Apr 18 2026 sachesi <xsachesi@pm.me> - 0.3.5-2
 - Use vendored offline COPR build
 - Add .copr/Makefile
 
-* Sat Apr 18 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.5-1
+* Sat Apr 18 2026 sachesi <xsachesi@pm.me> - 0.3.5-1
 - Use system themed RPM icon application-x-rpm for desktop integration
 - Refresh AppStream/README release metadata for 0.3.5
 
-* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.3.4-1
+* Mon Apr 06 2026 sachesi <xsachesi@pm.me> - 0.3.4-1
 - Rename project from rpm-installer to rpm-install
 - Rename compiled binary to rpm-install
 
-* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.1.2-1
+* Mon Apr 06 2026 sachesi <xsachesi@pm.me> - 0.1.2-1
 - Add colored install-state heading cues and uninstall action for installed packages
 - Keep metadata/path validation and error handling hardening from stabilization pass
 
-* Mon Apr 06 2026 sachesi <sachesi.bb.passp@proton.me> - 0.1.0-1
+* Mon Apr 06 2026 sachesi <xsachesi@pm.me> - 0.1.0-1
 - Initial Fedora package with COPR-friendly Source0 mode
 - Keep local build-in-place workflow via --define '_build_in_place 1'
