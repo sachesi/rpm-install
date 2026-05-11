@@ -6,8 +6,8 @@
 %global app_id com.github.sachesi.rpminstall
 
 Name:           rpm-install
-Version:        0.3.8
-Release:        2%{?dist}
+Version:        0.4.0
+Release:        1%{?dist}
 Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon or zypper
 
 License:        GPL-3.0-or-later

@@ -3,7 +3,7 @@ name = "rpm-install"
 version = "0.4.0"
 edition = "2024"
 description = "GTK4/libadwaita GUI installer for local RPM files via dnf5daemon"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 anyhow = "1.0.102"

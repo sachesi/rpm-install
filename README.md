@@ -1,31 +1,38 @@
-# RPM Installer (GTK4 + libadwaita + dnf5daemon)
+# RPM Installer (GTK4 + libadwaita)
 
-Fedora-specific desktop app in Rust for opening a local `.rpm`, showing clean package metadata, and running install/reinstall/upgrade/downgrade via `dnf5daemon` over D-Bus.
+A desktop app in Rust for opening local `.rpm` files, showing clean package metadata, and performing install/reinstall/upgrade/downgrade operations via `dnf5daemon` or `zypper`.
 
-## Fedora scope
+## Distribution scope
 
-This project is intentionally Fedora-specific:
+The app supports Fedora and openSUSE:
 
-- Backend API target: `org.rpm.dnf.v0` (`dnf5daemon`) on system D-Bus.
-- UI toolkit target: GNOME GTK4 + libadwaita.
-- Installed-state logic: RPM EVR semantics and architecture awareness.
+- **Fedora:** Uses `dnf5daemon` (`org.rpm.dnf.v0`) over system D-Bus.
+- **openSUSE:** Uses `zypper` backend.
+- **UI Toolkit:** GNOME GTK4 + libadwaita.
+- **Installed-state logic:** RPM EVR semantics and architecture awareness.
 
-## Why dnf5daemon (and not PackageKit)
+## Backends
 
-The app now uses Fedora-native `dnf5daemon` D-Bus APIs instead of PackageKit.
+### dnf5daemon (Fedora)
+
+The app uses Fedora-native `dnf5daemon` D-Bus APIs.
 
 Benefits:
-
 - Uses explicit dnf5 transaction operations (`install`, `reinstall`, `upgrade`, `downgrade`).
-- Clearer error handling categories for daemon/auth/cancel/unsupported/failure.
-- Session-based transaction flow (`open_session` → mark operation → `resolve` → `do_transaction` → `close_session`).
+- Clearer error handling for daemon/auth/cancel/unsupported/failure.
+- Session-based transaction flow.
+
+### Zypper (openSUSE)
+
+Supports openSUSE distributions by wrapping `zypper` commands for package management.
 
 ## Runtime requirements
 
-- Fedora with `dnf5daemon` server installed.
+- Fedora with `dnf5daemon-server` or openSUSE with `zypper`.
 - System D-Bus available.
 - Polkit agent available for authentication prompts.
 - GTK4/libadwaita runtime.
+
 
 ## Release notes
 
