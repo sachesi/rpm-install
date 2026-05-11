@@ -705,7 +705,7 @@ mod tests {
             license: None,
             vendor: None,
             packager: None,
-            url: Some("https://example.org".to_string()),
+            url: Some("https://github.com/sachesi/rpm-install".to_string()),
             installed_size: None,
             package_size: Some(1024),
             source_rpm: None,
@@ -730,7 +730,7 @@ mod tests {
         );
         assert_eq!(
             model.details.get(&DetailKey::Homepage).map(String::as_str),
-            Some("https://example.org")
+            Some("https://github.com/sachesi/rpm-install")
         );
         assert_eq!(
             model.details.get(&DetailKey::Signature).map(String::as_str),
