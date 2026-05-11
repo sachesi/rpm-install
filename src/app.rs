@@ -2,10 +2,8 @@ use adw::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
-use crate::backend::dnf5daemon::{
-    TransactionPreview, preview_local_rpm_transaction, run_local_rpm_transaction,
-};
-use crate::backend::types::{BackendOperation, operation_for_relation};
+use crate::backend::{preview_local_rpm_transaction, run_local_rpm_transaction};
+use crate::backend::types::{BackendOperation, TransactionPreview, operation_for_relation};
 use crate::error::{AppError, AppResult};
 use crate::installed_state::detect_installed;
 use crate::rpm_info::{RpmInfo, canonicalize_and_validate, read_rpm_info};

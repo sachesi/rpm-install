@@ -8,7 +8,7 @@
 Name:           rpm-install
 Version:        0.3.8
 Release:        2%{?dist}
-Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon
+Summary:        GTK4/libadwaita GUI installer for local RPM files via dnf5daemon or zypper
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/sachesi/rpm-install
@@ -24,15 +24,19 @@ BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  desktop-file-utils
 
+%if 0%{?suse_version}
+Requires:       zypper
+%else
 Requires:       dnf5daemon-server
+%endif
 
 %description
-GTK4/libadwaita GUI installer for local RPM files via dnf5daemon.
+GTK4/libadwaita GUI installer for local RPM files via dnf5daemon or zypper.
 
 The application accepts local .rpm files, paths, or file:// URIs, reads package
-metadata, and installs or reinstalls packages using dnf5daemon transactions.
-It integrates with desktop MIME handling so RPM files can be opened directly in
-the GUI.
+metadata, and installs or reinstalls packages using dnf5daemon or zypper
+transactions. It integrates with desktop MIME handling so RPM files can be
+opened directly in the GUI.
 
 %prep
 %autosetup -n %{name}-%{version}

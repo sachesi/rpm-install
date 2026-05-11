@@ -9,6 +9,11 @@ pub enum BackendOperation {
     Remove,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TransactionPreview {
+    pub additional_package_changes: Vec<String>,
+}
+
 impl BackendOperation {
     pub fn label(self) -> &'static str {
         match self {

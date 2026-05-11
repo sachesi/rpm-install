@@ -5,6 +5,12 @@ MAKEFILE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PROJECT_DIR  ?= $(patsubst %/,%,$(MAKEFILE_DIR))
 SPECFILE     ?= $(or $(spec),$(PROJECT_DIR)/rpm-install.spec)
 NAME         ?= rpm-install
+APP_ID       := com.github.sachesi.rpminstall
+
+PREFIX       ?= /usr/local
+BINDIR       ?= $(PREFIX)/bin
+DATADIR      ?= $(PREFIX)/share
+DESTDIR      ?=
 
 RPMBUILD_DIR ?= $(HOME)/rpmbuild
 SOURCES_DIR  ?= $(RPMBUILD_DIR)/SOURCES
@@ -18,13 +24,38 @@ SOURCE_ARCHIVE := $(SOURCES_DIR)/$(NAME)-$(VERSION).tar.gz
 VENDOR_NAME    := $(NAME)-$(VERSION)-vendor.tar.zst
 VENDOR_PATH    := $(SOURCES_DIR)/$(VENDOR_NAME)
 
-.PHONY: all \
+.PHONY: all help \
+	build install uninstall \
 	rpm srpm ba bs \
 	rpm-local srpm-local ba-local bs-local \
 	copr vendor \
 	sources local-sources prepare clean info check
 
-all: srpm
+all: build
+
+help:
+	@echo "Available targets:"
+	@echo "  build       Build the application (release mode)"
+	@echo "  install     Install the application (uses PREFIX, BINDIR, DATADIR)"
+	@echo "  uninstall   Uninstall the application"
+	@echo "  rpm         Build binary RPM (standard)"
+	@echo "  srpm        Build source RPM (standard)"
+	@echo "  ba-local    Build binary RPM (from local sources)"
+	@echo "  bs-local    Build source RPM (from local sources)"
+	@echo "  copr        Build SRPM for COPR (vendored)"
+	@echo "  clean       Cleanup build artifacts"
+	@echo "  info        Show project information"
+
+build:
+	cargo build --release
+
+install: build
+	install -Dpm 0755 target/release/$(NAME) $(DESTDIR)$(BINDIR)/$(NAME)
+	install -Dpm 0644 packaging/$(APP_ID).desktop $(DESTDIR)$(DATADIR)/applications/$(APP_ID).desktop
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/$(NAME)
+	rm -f $(DESTDIR)$(DATADIR)/applications/$(APP_ID).desktop
 
 rpm: ba
 srpm: bs
@@ -67,6 +98,7 @@ bs-local: local-sources
 
 # Download Source0 declared in the spec.
 sources: check prepare
+	@command -v spectool >/dev/null || { echo "ERROR: spectool not found. Install rpmdevtools." >&2; exit 1; }
 	@echo ":: downloading Source0 into $(SOURCES_DIR)"
 	spectool -g -C "$(SOURCES_DIR)" "$(SPECFILE)"
 	@test -f "$(SOURCE_ARCHIVE)" || { echo "ERROR: missing $(SOURCE_ARCHIVE)" >&2; exit 1; }
@@ -145,7 +177,6 @@ check:
 	@test -n "$(VERSION)" || { echo "ERROR: could not read Version from $(SPECFILE)" >&2; exit 1; }
 	@command -v rpmspec >/dev/null || { echo "ERROR: rpmspec not found. Install rpm-build." >&2; exit 1; }
 	@command -v rpmbuild >/dev/null || { echo "ERROR: rpmbuild not found. Install rpm-build." >&2; exit 1; }
-	@command -v spectool >/dev/null || { echo "ERROR: spectool not found. Install rpmdevtools." >&2; exit 1; }
 	@command -v cargo >/dev/null || { echo "ERROR: cargo not found. Install rust/cargo." >&2; exit 1; }
 	@command -v tar >/dev/null || { echo "ERROR: tar not found." >&2; exit 1; }
 	@command -v zstd >/dev/null || { echo "ERROR: zstd not found. Install zstd." >&2; exit 1; }

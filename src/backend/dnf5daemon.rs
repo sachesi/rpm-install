@@ -6,7 +6,7 @@ use tracing::{info, warn};
 use zbus::{Connection, Proxy};
 use zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use crate::backend::types::BackendOperation;
+use crate::backend::types::{BackendOperation, TransactionPreview};
 use crate::error::{AppError, AppResult};
 
 const BUS_NAME: &str = "org.rpm.dnf.v0";
@@ -18,11 +18,6 @@ const IFACE_BASE: &str = "org.rpm.dnf.v0.Base";
 
 const RESOLVE_OK: u32 = 0;
 const RESOLVE_WARNINGS: u32 = 1;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TransactionPreview {
-    pub additional_package_changes: Vec<String>,
-}
 
 #[derive(Debug)]
 struct ResolvedTransactionItem {
