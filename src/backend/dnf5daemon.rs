@@ -118,7 +118,7 @@ where
     let empty_options = HashMap::<String, Value<'_>>::new();
 
     call_rpm_op(&rpm, operation, &(specs, empty_options)).await?;
-    resolve_transaction(&goal, operation).await?;
+    let resolved_items = resolve_transaction(&goal, operation).await?;
 
     on_progress(None);
 
@@ -133,7 +133,14 @@ where
         .context("Could not subscribe to dnf5daemon transaction progress")
         .map_err(AppError::Other)?;
 
-    let tx_options = HashMap::from([("interactive".to_string(), Value::from(true))]);
+    let mut tx_options = HashMap::from([("interactive".to_string(), Value::from(true))]);
+    // dnf5daemon hardcodes the transaction description to "dnf5daemon-server", so the
+    // only field we can use to record what was actually installed is the comment, which
+    // shows up under `dnf history info <id>`.
+    tx_options.insert(
+        "comment".to_string(),
+        Value::from(transaction_comment(operation, &resolved_items)),
+    );
     let tx_body = (tx_options,);
     let run_tx = goal
         .call_method("do_transaction", &tx_body)
@@ -238,6 +245,32 @@ fn is_additional_package_change(item: &ResolvedTransactionItem) -> bool {
             item.action.as_str(),
             "Install" | "Upgrade" | "Downgrade" | "Reinstall"
         )
+}
+
+fn transaction_comment(
+    operation: BackendOperation,
+    items: &[ResolvedTransactionItem],
+) -> String {
+    let verb = match operation {
+        BackendOperation::Install => "install",
+        BackendOperation::Reinstall => "reinstall",
+        BackendOperation::Upgrade => "upgrade",
+        BackendOperation::Downgrade => "downgrade",
+        BackendOperation::Remove => "remove",
+    };
+
+    let primary = items
+        .iter()
+        .find(|item| {
+            item.object_type.eq_ignore_ascii_case("Package")
+                && item.reason.eq_ignore_ascii_case("User")
+        })
+        .and_then(|item| transaction_item_subject(&item.object));
+
+    match primary {
+        Some(subject) => format!("rpm-install: {verb} {subject}"),
+        None => format!("rpm-install: {verb}"),
+    }
 }
 
 fn format_transaction_item(item: &ResolvedTransactionItem) -> Option<String> {

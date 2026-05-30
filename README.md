@@ -36,6 +36,14 @@ Supports openSUSE distributions by wrapping `zypper` commands for package manage
 
 ## Release notes
 
+### 0.5.0 (2026-05-30)
+
+- dnf5daemon transactions now record a comment with the operation and package NEVRA, so installed packages are identifiable via `dnf history info <id>` instead of only showing `dnf5daemon-server`.
+- Fixed the Zypper preview parser dropping packages scheduled for removal (header matching was case-sensitive and missed `REMOVED`).
+- Zypper backend no longer disables all GPG checks. Repository dependency signatures are verified again; only the explicitly selected local RPM is allowed to be unsigned (`--allow-unsigned-rpm`, requires zypper ≥ 1.14.51).
+- Zypper preview now surfaces dependency-resolution failures instead of silently reporting no changes.
+- Error messages are backend-aware so the Zypper backend no longer shows dnf5daemon-specific text.
+
 ### 0.3.5 (2026-04-18)
 
 - Switched desktop integration to the system themed RPM icon name `application-x-rpm`.

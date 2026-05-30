@@ -6,11 +6,15 @@ pub async fn preview_local_rpm_transaction(
     spec: &str,
     operation: BackendOperation,
 ) -> AppResult<TransactionPreview> {
-    let mut cmd = vec!["zypper", "--non-interactive", "--no-gpg-checks"];
+    let mut cmd = vec!["zypper", "--non-interactive"];
     match operation {
         BackendOperation::Install | BackendOperation::Reinstall | BackendOperation::Upgrade | BackendOperation::Downgrade => {
             cmd.push("install");
             cmd.push("--dry-run");
+            // Permit the explicitly chosen local RPM if it is unsigned, while keeping
+            // GPG signature verification active for repository dependencies. This mirrors
+            // dnf5's behaviour of being lenient on the local package but strict on repos.
+            cmd.push("--allow-unsigned-rpm");
         }
         BackendOperation::Remove => {
             cmd.push("remove");
@@ -31,6 +35,10 @@ pub async fn preview_local_rpm_transaction(
     if !proc.has_exited() || proc.exit_status() != 0 {
         let err_msg = stderr.unwrap_or_default();
         warn!("Zypper preview failed: {}", err_msg);
+        return Err(AppError::OperationFailed {
+            operation,
+            details: format!("Zypper could not resolve the transaction: {}", err_msg.trim()),
+        });
     }
 
     let stdout = stdout.unwrap_or_default();
@@ -45,10 +53,11 @@ pub async fn run_local_rpm_transaction<F>(
 where
     F: FnMut(Option<u32>) + 'static,
 {
-    let mut cmd = vec!["pkexec", "zypper", "--non-interactive", "--no-gpg-checks"];
+    let mut cmd = vec!["pkexec", "zypper", "--non-interactive"];
     match operation {
         BackendOperation::Install | BackendOperation::Reinstall | BackendOperation::Upgrade | BackendOperation::Downgrade => {
             cmd.push("install");
+            cmd.push("--allow-unsigned-rpm");
         }
         BackendOperation::Remove => {
             cmd.push("remove");
@@ -96,20 +105,29 @@ fn parse_zypper_preview(stdout: &str) -> TransactionPreview {
 
     for line in stdout.lines() {
         let line = line.trim();
-        if line.is_empty() { continue; }
 
-        if line.contains("The following") && (line.contains("NEW") || line.contains("updated") || line.contains("removed")) {
-            capturing = true;
+        // A blank line ends the current package section. zypper separates each
+        // "The following ..." block from the summary with a blank line.
+        if line.is_empty() {
+            capturing = false;
+            continue;
+        }
+
+        // Section headers are case-insensitive: zypper prints actions such as
+        // "NEW", "REMOVED", "upgraded", "downgraded", "reinstalled".
+        let lower = line.to_lowercase();
+        if lower.starts_with("the following") {
+            capturing = lower.contains("new")
+                || lower.contains("install")
+                || lower.contains("upgrad")
+                || lower.contains("updated")
+                || lower.contains("removed")
+                || lower.contains("downgrad")
+                || lower.contains("reinstall");
             continue;
         }
 
         if capturing {
-            if line.contains(":") && !line.contains("  ") {
-                capturing = false;
-                continue;
-            }
-            
-            // Split by whitespace and add to list if it looks like a package name
             for pkg in line.split_whitespace() {
                 if !pkg.is_empty() && !pkg.starts_with('(') && !pkg.ends_with(')') {
                     additional_package_changes.push(pkg.to_string());

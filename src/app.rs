@@ -2,7 +2,7 @@ use adw::prelude::*;
 use gtk::glib;
 use tracing::{error, info, warn};
 
-use crate::backend::{preview_local_rpm_transaction, run_local_rpm_transaction};
+use crate::backend::{BackendType, detect_backend, preview_local_rpm_transaction, run_local_rpm_transaction};
 use crate::backend::types::{BackendOperation, TransactionPreview, operation_for_relation};
 use crate::error::{AppError, AppResult};
 use crate::installed_state::detect_installed;
@@ -327,14 +327,23 @@ fn humanize_error(error: &AppError, operation: BackendOperation) -> String {
         AppError::SourceRpmNotInstallable => {
             "Source RPM files (.src.rpm/.nosrc.rpm) cannot be installed with this GUI.".to_string()
         }
-        AppError::DaemonUnavailable(_) => "dnf5daemon is not available on system D-Bus. Install the dnf5daemon packages and try again. The service is D-Bus activated and does not need manual systemctl enable.".to_string(),
+        AppError::DaemonUnavailable(_) => match detect_backend() {
+            BackendType::Zypper => "The zypper backend is not available. Install zypper and try again.".to_string(),
+            BackendType::Dnf5 => "dnf5daemon is not available on system D-Bus. Install the dnf5daemon packages and try again. The service is D-Bus activated and does not need manual systemctl enable.".to_string(),
+        },
         AppError::AuthDenied => "Authentication was denied; no changes were made.".to_string(),
         AppError::AuthCanceled => "Authentication was canceled.".to_string(),
         AppError::TransactionCanceled => "The transaction was canceled.".to_string(),
-        AppError::UnsupportedOperation(_) => format!(
-            "This system's dnf5daemon runtime does not support {:?} for the selected local RPM.",
-            operation
-        ),
+        AppError::UnsupportedOperation(_) => match detect_backend() {
+            BackendType::Zypper => format!(
+                "The zypper backend does not support {:?} for the selected local RPM.",
+                operation
+            ),
+            BackendType::Dnf5 => format!(
+                "This system's dnf5daemon runtime does not support {:?} for the selected local RPM.",
+                operation
+            ),
+        },
         AppError::NonRegularFile => "Please choose a regular .rpm file.".to_string(),
         AppError::InvalidLocalRpm(details) => format!(
             "The selected RPM is unreadable or invalid: {}",
